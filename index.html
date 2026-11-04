@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MA Suryah Khairuddin Merlung</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap" rel="stylesheet">
+  <meta name="description" content="Website resmi dan sistem informasi MA Suryah Khairuddin Merlung">
+  <meta name="theme-color" content="#176B45">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23176B45'/%3E%3Cpath d='M32 14l5 10 11 2-8 8 2 12-10-6-10 6 2-12-8-8 11-2z' fill='%23C9A34A'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Layar muat awal -->
+  <div id="boot" class="boot" role="status" aria-live="polite">
+    <div class="spin"></div><p class="muted">Memuat portal madrasah…</p>
+  </div>
+  <a href="javascript:void(0)" class="skip" onclick="document.getElementById('pubMain').focus()">Lewati ke konten</a>
+
+  <!-- ===== WEBSITE PUBLIK ===== -->
+  <div id="pub" hidden>
+    <div class="topbar"><div class="wrap" id="topInfo"></div></div>
+    <header class="navbar">
+      <div class="wrap">
+        <a class="brand" href="javascript:void(0)" onclick="go('beranda')" aria-label="Ke beranda">
+          <img data-logo alt="Logo madrasah" hidden><span class="material-symbols-outlined logo-fb" data-logo-fb aria-hidden="true">mosque</span>
+          <span><span data-brand>MA Suryah Khairuddin Merlung</span><small>Unggul, Berakhlak, dan Berprestasi</small></span>
+        </a>
+        <nav id="pubNav" aria-label="Menu utama"></nav>
+        <div class="row nav-cta" style="margin-left:.5rem">
+          <button class="icon-btn" onclick="toggleTheme()" aria-label="Ganti mode terang/gelap"><span class="material-symbols-outlined">contrast</span></button>
+          <button class="btn btn-gold btn-sm" id="btnPanel" onclick="go('login')"><span class="material-symbols-outlined">login</span><span class="hide-sm">Masuk</span></button>
+          <button class="icon-btn menu-btn" onclick="$('#pubNav').classList.toggle('open')" aria-label="Buka menu"><span class="material-symbols-outlined">menu</span></button>
+        </div>
+      </div>
+    </header>
+    <main id="pubMain" tabindex="-1" style="outline:none"></main>
+    <footer class="footer" id="pubFoot"></footer>
+  </div>
+
+  <!-- ===== PANEL ADMIN ===== -->
+  <div id="adm" hidden>
+    <aside class="side" id="side" aria-label="Navigasi panel">
+      <a class="brand" href="javascript:void(0)" onclick="logoutToPublic()" title="Kembali ke website">
+        <img data-logo alt="" hidden><span class="material-symbols-outlined logo-fb" data-logo-fb aria-hidden="true">mosque</span>
+        <span><span data-brand>MA Suryah Khairuddin</span><small>Sistem Informasi Madrasah</small></span>
+      </a>
+      <nav id="admNav" aria-label="Menu panel"></nav>
+      <div style="padding:.75rem;border-top:1px solid var(--border)">
+        <a class="sl" href="javascript:void(0)" onclick="logoutToPublic(true)"><span class="material-symbols-outlined">public</span>Lihat Website</a>
+      </div>
+    </aside>
+    <div class="scrim" id="scrim" onclick="toggleSide(false)"></div>
+    <div class="adm-main">
+      <header class="adm-top">
+        <button class="icon-btn adm-menu-btn" onclick="toggleSide(true)" aria-label="Buka menu"><span class="material-symbols-outlined">menu</span></button>
+        <h1 id="admTitle">Dashboard</h1>
+        <span style="flex:1"></span>
+        <button class="icon-btn" onclick="toggleTheme()" aria-label="Ganti mode terang/gelap"><span class="material-symbols-outlined">contrast</span></button>
+        <button class="btn btn-ghost btn-sm" onclick="openUserMenu()" id="userBtn" aria-haspopup="dialog"><span class="material-symbols-outlined">account_circle</span><span id="userName" class="hide-sm"></span></button>
+      </header>
+      <main id="admMain" tabindex="-1" style="outline:none"></main>
+    </div>
+  </div>
+
+  <div id="modalRoot"></div>
+  <div id="toasts" role="status" aria-live="polite"></div>
+
+  <script>
+  /* Pengaman muat awal: tampilkan pesan galat di layar + tombol coba lagi */
+  window.__bootErr = function (m) {
+    var b = document.getElementById('boot'); if (!b) return;
+    b.innerHTML = '<p style="max-width:460px;text-align:center;color:#B91C1C;font-family:sans-serif"><b>Portal gagal dimuat.</b><br>' +
+      String(m).replace(/</g, '&lt;') + '</p><button style="padding:.7rem 1.2rem;border-radius:10px;border:0;background:#176B45;color:#fff;font-weight:600;cursor:pointer" onclick="window.startApp&&startApp()">Coba lagi</button>';
+  };
+  window.addEventListener('error', function (e) { window.__bootErr(e.message + (e.lineno ? ' (baris ' + e.lineno + ')' : '')); });
+  setTimeout(function () { window.__bootErr('Server tidak merespons dalam 30 detik. Periksa koneksi internet, lalu coba lagi.'); }, 30000);
+  </script>
+  <script src="config.js"></script>
+  <script src="app.js" defer></script>
+</body>
+</html>
