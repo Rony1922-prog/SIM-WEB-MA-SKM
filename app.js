@@ -433,7 +433,7 @@ function enterAdmin(wajib) {
 }
 function toggleSide(on) { $('#side').classList.toggle('open', on); $('#scrim').classList.toggle('open', on); }
 function goA(k) {
-  S.adm = k; toggleSide(false);
+  S.adm = k; S.navTok = (S.navTok || 0) + 1; toggleSide(false);
   $$('#admNav .sl').forEach(a => a.classList.toggle('active', a.dataset.k === k));
   const t = menuFor(S.user.peran).find(x => x[0] === k); $('#admTitle').textContent = t ? t[2] : 'Panel';
   if (k.startsWith('m:')) modPage(k.slice(2)); else (ADM[k] || ADM.dashboard)();
@@ -441,15 +441,17 @@ function goA(k) {
 }
 const HOLDERS = { k_berita: '#ktable', k_pengumuman: '#ktable', pesan: '#ptable', users: '#utable', log: '#ltable' };
 async function swr(key, action, payload, page, render) {
-  const hold = HOLDERS[key] || (key.indexOf('m_') === 0 ? '#mtable' : ''), box = () => (hold && $(hold)) || $('#admMain');
+  const nav = S.navTok, hold = HOLDERS[key] || (key.indexOf('m_') === 0 ? '#mtable' : ''), box = () => (hold && $(hold)) || $('#admMain');
   if (S.cache[key]) render(S.cache[key]); else box().innerHTML = skeleton();
   const d = await api(action, payload);
+  if (nav !== S.navTok) return;
   if (d === undefined) {
     if (!S.cache[key] && S.adm === page) box().innerHTML = `<div class="empty">${ic('cloud_off')}Gagal memuat data.<br><button class="btn btn-outline btn-sm" style="margin-top:.75rem" onclick="goA('${page}')">Coba lagi</button></div>`;
     return;
   }
   S.cache[key] = d; if (S.adm === page) render(d);
 }
+function navGuard() { const nav = S.navTok; return () => nav === S.navTok; }
 function openUserMenu() {
   modal({ title: S.user.nama, body: `<p class="muted">${esc(ROLES[S.user.peran] || S.user.peran)} · ${esc(S.user.username)}</p>`,
     foot: `<button class="btn btn-outline" onclick="pwModal(false)">${ic('key')} Ganti Kata Sandi</button><button class="btn btn-danger" onclick="logout()">${ic('logout')} Keluar</button>` });
@@ -940,9 +942,10 @@ function absTab(t) {
   }
 }
 async function absLoad() {
+  const ok2 = navGuard();
   const p = { tanggal: $('#ab_tgl').value, id_rombel: $('#ab_rb').value, id_mapel: $('#ab_mp').value, jam: $('#ab_jam').value };
   if (!p.tanggal || !p.id_rombel || !p.id_mapel) { toast('Periksa', 'Pilih tanggal, kelas, dan mata pelajaran.', 'warn'); return; }
-  S.abp = p; const d = await api('absGet', p); if (d === undefined) return;
+  S.abp = p; const d = await api('absGet', p); if (d === undefined || !ok2()) return;
   $('#absRoster').innerHTML = d.siswa.length ? `<div class="card pad">${d.ada ? `<p class="hint" style="margin-bottom:.75rem">${ic('info')} Sesi ini sudah pernah diisi. Menyimpan akan memperbarui data.</p>` : ''}
     <div class="row" style="margin-bottom:.75rem"><b>${d.siswa.length} siswa</b><span style="flex:1"></span><button class="btn btn-outline btn-sm" onclick="absSemuaHadir()">Semua Hadir</button></div>
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>No</th><th>NIS</th><th>Nama</th><th>Kehadiran</th></tr></thead><tbody>${d.siswa.map((s, i) => `<tr><td>${i + 1}</td><td>${esc(s.nis)}</td><td>${esc(s.nama)}</td><td>${segs(s.id, d.tidak_hadir[s.id] || 'H')}</td></tr>`).join('')}</tbody></table></div>
@@ -957,8 +960,9 @@ async function absSimpan() {
   if (r !== undefined) toast('Tersimpan', Object.keys(th).length + ' siswa tidak hadir.');
 }
 async function absRekap() {
+  const ok2 = navGuard();
   const id = $('#rk_rb').value; if (!id) { toast('Periksa', 'Pilih kelas.', 'warn'); return; }
-  const d = await api('absRekap', { id_rombel: id, dari: $('#rk_a').value, sampai: $('#rk_b').value }); if (d === undefined) return;
+  const d = await api('absRekap', { id_rombel: id, dari: $('#rk_a').value, sampai: $('#rk_b').value }); if (d === undefined || !ok2()) return;
   $('#absRoster').innerHTML = `<div class="card"><div class="pad"><b>${d.sesi}</b> sesi pembelajaran tercatat pada rentang ini.</div><div class="tbl-wrap">${d.siswa.length ? `<table class="tbl"><thead><tr><th>NIS</th><th>Nama</th><th>Sakit</th><th>Izin</th><th>Alpa</th><th>Kehadiran</th></tr></thead><tbody>${d.siswa.map(s => `<tr><td>${esc(s.nis)}</td><td>${esc(s.nama)}</td><td>${s.S}</td><td>${s.I}</td><td>${s.A}</td><td>${s.persen === null ? '-' : s.persen + '%'}</td></tr>`).join('')}</tbody></table>` : emptyBox('groups', 'Tidak ada siswa.')}</div></div>`;
 }
 
@@ -980,9 +984,10 @@ ADM.nilai = async () => {
     <button class="btn btn-primary" onclick="nilaiLoad()">${ic('grading')} Tampilkan Nilai</button></div><div id="nlBody" style="margin-top:1rem"></div>`;
 };
 async function nilaiLoad() {
+  const ok2 = navGuard();
   const p = { id_rombel: $('#nl_rb').value, id_mapel: $('#nl_mp').value };
   if (!p.id_rombel || !p.id_mapel) { toast('Periksa', 'Pilih kelas dan mata pelajaran.', 'warn'); return; }
-  const d = await api('nilaiList', p); if (d === undefined) return;
+  const d = await api('nilaiList', p); if (d === undefined || !ok2()) return;
   S.nl = { p: p, d: d }; drawNilai();
 }
 function drawNilai() {
@@ -1042,8 +1047,9 @@ ADM.rapor = async () => {
   if (mine) raporLoad();
 };
 async function raporLoad() {
+  const ok2 = navGuard();
   const id = $('#rp_rb').value; if (!id) { toast('Periksa', 'Pilih kelas.', 'warn'); return; }
-  const d = await api('raporGet', { id_rombel: id }); if (d === undefined) return;
+  const d = await api('raporGet', { id_rombel: id }); if (d === undefined || !ok2()) return;
   S.rp = d; drawRapor();
 }
 function drawRapor() {
@@ -1456,7 +1462,8 @@ ADM.pelrekap = async () => {
   pelRekapLoad();
 };
 async function pelRekapLoad() {
-  const d = await api('pelRekap', { id_rombel: $('#pr_rb').value }); if (d === undefined) return;
+  const ok2 = navGuard();
+  const d = await api('pelRekap', { id_rombel: $('#pr_rb').value }); if (d === undefined || !ok2()) return;
   S.pr = d;
   $('#prBody').innerHTML = `<div class="card"><div class="pad"><p class="hint" style="margin:0">Peringatan mulai ${d.ambang1} poin, panggil orang tua mulai ${d.ambang2} poin (dapat diubah di Pengaturan).</p></div><div class="tbl-wrap">${d.rows.length ? `<table class="tbl"><thead><tr><th>NIS</th><th>Nama</th><th>Kelas</th><th>Jumlah</th><th>Total Poin</th><th>Status</th><th></th></tr></thead><tbody>${d.rows.map(r => `<tr><td>${esc(r.nis)}</td><td><b>${esc(r.nama)}</b></td><td>${esc(r.kelas)}</td><td>${r.jumlah}</td><td><b>${r.total}</b></td>
     <td><span class="badge ${PEL_BADGE[r.status]}">${esc(r.status)}</span></td><td>${r.jumlah ? `<button class="icon-btn sm" title="Rincian" aria-label="Rincian ${esc(r.nama)}" onclick="pelRincian('${esc(r.id)}')">${ic('open_in_new')}</button>` : ''}</td></tr>`).join('')}</tbody></table>` : emptyBox('groups', 'Tidak ada siswa.')}</div></div>`;
@@ -1563,7 +1570,8 @@ function tgTab(t) {
   tagihanLoad();
 }
 async function tagihanLoad() {
-  const d = await api('tagihanList', { bulan: S.tg.bulan, status: S.tg.status, id_rombel: S.tg.rb }); if (d === undefined) return;
+  const ok2 = navGuard();
+  const d = await api('tagihanList', { bulan: S.tg.bulan, status: S.tg.status, id_rombel: S.tg.rb }); if (d === undefined || !ok2()) return;
   S.tg.rows = d.rows; drawTagihan();
 }
 function drawTagihan() {
@@ -1626,7 +1634,8 @@ async function bayarBatal(id) {
   if (await api('bayarBatal', { id: id }) !== undefined) { toast('Dibatalkan', 'Pembayaran dibatalkan.'); closeModal(); tagihanLoad(); }
 }
 async function tunggakanLoad() {
-  const d = await api('tunggakan', { id_rombel: S.tg.rb }); if (d === undefined) return;
+  const ok2 = navGuard();
+  const d = await api('tunggakan', { id_rombel: S.tg.rb }); if (d === undefined || !ok2()) return;
   $('#tgTable').innerHTML = d.rows.length ? `<table class="tbl"><thead><tr><th>Kelas</th><th>Nama</th><th>Orang Tua / Wali</th><th>Bulan</th><th>Total Tunggakan</th><th></th></tr></thead><tbody>${d.rows.map(x => `<tr><td>${esc(x.kelas)}</td><td><b>${esc(x.nama)}</b><div class="hint">${esc(x.nis)}</div></td><td>${esc(x.ortu || '-')}</td><td>${x.bulan}</td><td><b>${rp(x.total)}</b></td>
     <td>${waLink(x.wa) ? `<a class="btn btn-outline btn-sm" href="${waLink(x.wa)}?text=${encodeURIComponent('Assalamu\'alaikum, kami dari bendahara ' + (S.cfg.nama_madrasah || 'madrasah') + '. Mohon informasi tunggakan pembayaran ' + x.nama + ' sebesar ' + rp(x.total) + '. Terima kasih.')}" target="_blank" rel="noopener">${ic('chat')} WhatsApp</a>` : ''}</td></tr>`).join('')}
     <tr style="font-weight:700;background:var(--surface2)"><td colspan="4">Total (${d.rows.length} siswa)</td><td colspan="2">${rp(d.total)}</td></tr></tbody></table>` : emptyBox('verified', 'Tidak ada tunggakan. Alhamdulillah.');
@@ -1641,7 +1650,8 @@ ADM.laporankeu = () => {
   laporanKeuLoad();
 };
 async function laporanKeuLoad() {
-  const d = await api('keuRingkas', { tahun: $('#lk_th').value }); if (d === undefined) return;
+  const ok2 = navGuard();
+  const d = await api('keuRingkas', { tahun: $('#lk_th').value }); if (d === undefined || !ok2()) return;
   const kpi = (l, v, c) => `<div class="card kpi ${c || ''}"><small>${l}</small><b style="font-size:1.4rem">${rp(v)}</b></div>`;
   $('#lkBody').innerHTML = `<div class="grid g4" style="margin-bottom:1.25rem">${kpi('Saldo Kas', d.saldo, 'gold')}${kpi('Pemasukan ' + d.tahun, d.masukTahun)}${kpi('Pengeluaran ' + d.tahun, d.keluarTahun, 'warn')}${kpi('Tunggakan SPP', d.tunggakan, 'info')}</div>
     <div class="grid g2"><div class="card pad"><h3 style="margin-bottom:.75rem">Pemasukan dan Pengeluaran per Bulan</h3><div style="height:260px"><canvas id="chKeu" role="img" aria-label="Grafik pemasukan dan pengeluaran per bulan"></canvas></div></div>
@@ -1661,16 +1671,17 @@ ADM.sirkulasi = () => {
   srTab('dipinjam');
 };
 async function srTab(t) {
+  const ok2 = navGuard();
   S.sr.tab = t; [1, 2, 3].forEach((n, i) => $('#srT' + n).classList.toggle('on', ['dipinjam', 'riwayat', 'laporan'][i] === t));
   $('#srBody').innerHTML = skeleton(1);
   if (t === 'laporan') {
-    const d = await api('perpusLaporan'); if (d === undefined) return;
+    const d = await api('perpusLaporan'); if (d === undefined || !ok2()) return;
     const k = (l, v, c) => `<div class="card kpi ${c || ''}"><small>${l}</small><b>${v}</b></div>`;
     $('#srBody').innerHTML = `<div class="grid g4" style="margin-bottom:1.25rem">${k('Judul / Eksemplar', d.judul + ' / ' + d.eksemplar)}${k('Dipinjam Saat Ini', d.dipinjam, 'info')}${k('Terlambat', d.terlambat, 'warn')}${k('Peminjaman Bulan Ini', d.bulanIni, 'gold')}</div>
       <div class="card"><div class="pad"><h3>Buku Terpopuler</h3><p class="muted" style="margin:0;font-size:.85rem">Total denda tercatat: ${rp(d.dendaTotal)}</p></div><div class="tbl-wrap">${d.populer.length ? `<table class="tbl"><thead><tr><th>No</th><th>Judul</th><th>Dipinjam</th></tr></thead><tbody>${d.populer.map((x, i) => `<tr><td>${i + 1}</td><td>${esc(x.judul)}</td><td>${x.jumlah} kali</td></tr>`).join('')}</tbody></table>` : emptyBox('menu_book', 'Belum ada data peminjaman.')}</div></div>`;
     return;
   }
-  const d = await api('pinjamList', { status: t === 'riwayat' ? 'Dikembalikan' : 'Dipinjam' }); if (d === undefined) return;
+  const d = await api('pinjamList', { status: t === 'riwayat' ? 'Dikembalikan' : 'Dipinjam' }); if (d === undefined || !ok2()) return;
   const dip = t !== 'riwayat';
   $('#srBody').innerHTML = `${dip && S.sr.canW ? `<div class="toolbar"><span style="flex:1"></span><button class="btn btn-primary" onclick="pinjamForm()">${ic('add_circle')} Pinjamkan Buku</button></div>` : ''}<div class="card"><div class="tbl-wrap">${d.length ? `<table class="tbl"><thead><tr><th>Buku</th><th>Peminjam</th><th>Pinjam</th><th>${dip ? 'Jatuh Tempo' : 'Kembali'}</th><th>${dip ? 'Keterlambatan' : 'Denda'}</th><th></th></tr></thead><tbody>${d.map(x => `<tr>
     <td><b>${esc(x.judul)}</b></td><td>${esc(x.nama)}<div class="hint">${esc(x.kelas)}</div></td><td>${esc(fmtD(x.tgl_pinjam))}</td><td>${esc(fmtD(dip ? x.jatuh_tempo : x.tgl_kembali))}</td>

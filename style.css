@@ -144,6 +144,7 @@ textarea.input { min-height: 110px; resize: vertical; }
 .adm-top h1 { font-size: 1.15rem; font-weight: 700; }
 #admMain { padding: 1.25rem; max-width: 1300px; }
 .scrim { display: none; position: fixed; inset: 0; background: rgba(16,69,47,.4); backdrop-filter: blur(4px); z-index: 55; }
+.adm-menu-btn { display: none; }
 @media (max-width: 900px) {
   .adm-menu-btn { display: inline-flex; }
   .side { transform: translateX(-100%); } .side.open { transform: none; } .scrim.open { display: block; }
@@ -187,7 +188,6 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .85rem; }
 .segs label.on-H { background: var(--primary); color: var(--on-primary); } .segs label.on-S { background: var(--warn-bg); color: var(--warn); }
 .segs label.on-I { background: var(--info-bg); color: var(--info); } .segs label.on-A { background: var(--bad-bg); color: var(--bad); }
 .nl-in { width: 96px; min-height: 38px; }
-.adm-menu-btn { display: none; }
 .gal { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
 .gal button { position: relative; padding: 0; border: 0; background: var(--surface); border-radius: 14px; overflow: hidden; cursor: pointer; text-align: left; box-shadow: var(--shadow1); font: inherit; color: var(--text); }
 .gal button:hover { box-shadow: var(--shadow2); }
