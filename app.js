@@ -693,7 +693,8 @@ const SET_GROUPS = [
   { t: 'Karya Siswa', f: [['karya_nama', 'Nama penulis tampil di website', 'opt', 'Lengkap,Inisial']] },
   { t: 'Akademik & Rapor', f: [['tahun_ajaran', 'Tahun ajaran (mis. 2026/2027)'], ['semester', 'Semester aktif', 'opt', 'Ganjil,Genap'], ['sem_mulai', 'Semester mulai', 'date'], ['sem_selesai', 'Semester selesai', 'date'],
     ['bobot_formatif', 'Bobot Formatif (%)'], ['bobot_sumatif', 'Bobot Sumatif (%)'], ['bobot_sas', 'Bobot SAS (%)'], ['nip_kepala', 'NIP Kepala Madrasah'],
-    ['ttd_kepala_id', 'Tanda tangan Kepala Madrasah (PNG, latar transparan)', 'imgp', 500]], hint: 'Tahun ajaran dan semester aktif menentukan data nilai dan rapor yang dikerjakan guru.' }
+    ['ttd_kepala_id', 'Tanda tangan Kepala Madrasah (PNG, latar transparan)', 'imgp', 500],
+    ['hari_sekolah', 'Hari sekolah efektif (urutan sesuai pilihan Anda)']], hint: 'Tahun ajaran dan semester aktif menentukan data nilai dan rapor yang dikerjakan guru. Isi "Hari sekolah efektif" dengan hari yang dipakai untuk Jadwal Pelajaran, dipisah koma, misalnya Senin,Selasa,Rabu,Kamis,Sabtu,Minggu jika Jumat libur dan Minggu tetap masuk. Kosongkan untuk memakai bawaan Senin–Sabtu.' }
 ];
 ADM.pengaturan = () => swr('cfg', 'settingsGet', {}, 'pengaturan', c => {
   $('#admMain').innerHTML = `<div class="row" style="margin-bottom:1rem"><p class="muted" style="margin:0;flex:1">Perubahan tampil di website setelah disimpan.</p><button class="btn btn-primary" id="setSave" onclick="saveSettings()">${ic('save')} Simpan Pengaturan</button></div>` +
@@ -821,9 +822,11 @@ async function modPage(key) {
   $('#admMain').innerHTML = `<div class="toolbar"><input class="input" type="search" placeholder="Cari…" aria-label="Cari" oninput="S.m.q=this.value.toLowerCase();debounce(drawMod,150)()">
     ${m.filter ? '<select class="input" style="max-width:220px" id="mfilter" aria-label="Filter" onchange="S.m.f=this.value;drawMod()"></select>' : ''}<span style="flex:1"></span>${tools.join('')}</div>
     <div class="card"><div class="tbl-wrap" id="mtable">${skeleton()}</div></div>`;
-  await loadRefs();
-  if (S.adm !== 'm:' + key) return;
-  swr('m_' + key, 'mList', { mod: key }, 'm:' + key, rows => { S.m.rows = rows; fillModFilter(); drawMod(); });
+  const refsP = loadRefs();
+  swr('m_' + key, 'mList', { mod: key }, 'm:' + key, async rows => {
+    await refsP; if (S.adm !== 'm:' + key) return;
+    S.m.rows = rows; fillModFilter(); drawMod();
+  });
 }
 function drawMod() {
   const m = S.m.m, q = S.m.q;
