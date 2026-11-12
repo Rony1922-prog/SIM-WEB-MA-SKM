@@ -8,7 +8,7 @@
  */
 
 const S = { cfg: {}, berita: [], peng: [], token: null, user: null, mode: 'public', page: 'beranda', adm: 'dashboard',
-  cache: {}, charts: {}, names: [], loginAdmin: false, bq: '', bk: '', k: { table: 'berita', q: '', st: '' }, uq: '', up: '', mq: '' };
+  cache: {}, cacheT: {}, pf: {}, det: {}, charts: {}, names: [], loginAdmin: false, bq: '', bk: '', k: { table: 'berita', q: '', st: '' }, uq: '', up: '', mq: '' };
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -24,6 +24,29 @@ const store = {
   sget: k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
   sset: (k, v) => { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch (e) {} }
 };
+const lsJ = {
+  get: k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+};
+const PKEY = () => 'sim_p:' + (S.user ? S.user.id : '') + ':';
+function persistPut(key, d) {
+  try { if (!S.user) return; const js = JSON.stringify(d); if (js.length < 400000) sessionStorage.setItem(PKEY() + key, js); } catch (e) {}
+}
+function persistClear() {
+  try { Object.keys(sessionStorage).filter(k => k.indexOf('sim_p:') === 0).forEach(k => sessionStorage.removeItem(k)); } catch (e) {}
+}
+function persistHydrate() {
+  try {
+    const pre = PKEY();
+    Object.keys(sessionStorage).forEach(k => {
+      if (k.indexOf(pre) !== 0) return;
+      const key = k.slice(pre.length), v = JSON.parse(sessionStorage.getItem(k));
+      if (key === '__mods') { if (!S.mods || !S.mods.length) S.mods = v; }
+      else if (key === '__refs') { if (!S.refs) { S.refs = v; S.refsAt = 0; } }
+      else if (!S.cache[key]) S.cache[key] = v;
+    });
+  } catch (e) {}
+}
 let _debounce; const debounce = (fn, ms = 250) => (...a) => { clearTimeout(_debounce); _debounce = setTimeout(() => fn(...a), ms); };
 const waLink = n => { let d = String(n || '').replace(/\D/g, ''); if (d.startsWith('0')) d = '62' + d.slice(1); return d ? 'https:\/\/wa.me\/' + d : ''; };
 const ROLES = { guru: 'Guru', wali_kelas: 'Wali Kelas', bk: 'Guru BK', tu: 'Staf TU', kepala: 'Kepala Madrasah', bendahara: 'Bendahara', pustakawan: 'Pustakawan', siswa: 'Siswa', super_admin: 'Super Admin' };
@@ -168,20 +191,37 @@ function loadLib(u) {
     document.head.appendChild(el);
   }));
 }
+function firstRender() { showPublic(); const rt = parseHash(); go(rt[0], rt[1], true); }
 async function startApp() {
   const bt = $('#boot'); if (bt) bt.innerHTML = '<div class="spin"></div><p class="muted">Memuat portal madrasah…</p>';
   try {
     applyTheme();
-    const r = await run('apiPublic', 'bundle', {});
-    if (!r || !r.success) throw new Error((r && r.message) || 'Tidak ada respons dari server.');
-    S.cfg = r.data.cfg; S.berita = r.data.berita; S.peng = r.data.pengumuman; S.loadedAt = Date.now();
-    showPublic(); const rt = parseHash(); go(rt[0], rt[1], true);
+    const cb = lsJ.get('sim_bundle');
+    if (cb && cb.d && cb.d.cfg && cb.d.cfg.nama_madrasah && Date.now() - cb.t < 604800000) {
+      S.cfg = cb.d.cfg; S.berita = cb.d.berita; S.peng = cb.d.pengumuman; S.loadedAt = cb.t;
+      firstRender();
+    } else {
+      const r = await run('apiPublic', 'bundle', {});
+      if (!r || !r.success) throw new Error((r && r.message) || 'Tidak ada respons dari server.');
+      S.cfg = r.data.cfg; S.berita = r.data.berita; S.peng = r.data.pengumuman; S.loadedAt = Date.now();
+      lsJ.set('sim_bundle', { t: Date.now(), d: r.data });
+      firstRender();
+    }
   } catch (e) { window.__bootErr(e.message); return; }
   const b = $('#boot'); if (b) { b.style.opacity = '0'; setTimeout(() => b.remove(), 300); }
+  setTimeout(prefetchPublic, 2500);
   const t = store.sget('sim_t');
   if (t) { S.token = t; const me = await api('me', {}, true); if (me) { S.user = me.user; updatePanelBtn(); } else { S.token = null; store.sset('sim_t', null); } }
 }
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startApp); else startApp();
+async function prefetchPublic() {
+  const jobs = [['galeri', 'galeri'], ['unduhan', 'unduhan'], ['karya', 'karya']];
+  for (const [fld, act] of jobs) {
+    if (S[fld]) continue;
+    try { const r = await run('apiPublic', act, {}); if (r && r.success && !S[fld]) S[fld] = r.data || []; } catch (e) { return; }
+    await new Promise(r => setTimeout(r, 700));
+  }
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => startApp()); else Promise.resolve().then(startApp);
 function setBrand() {
   const c = S.cfg; document.title = c.nama_madrasah || 'MA Suryah Khairuddin Merlung';
   $$('[data-brand]').forEach(e => e.textContent = c.nama_madrasah || 'MA Suryah Khairuddin Merlung');
@@ -317,9 +357,13 @@ function drawBerita() {
   $('#bgrid').innerHTML = r.length ? `<div class="grid g3">${r.map(beritaCard).join('')}</div>` : emptyBox('search_off', 'Berita tidak ditemukan.');
 }
 PUB['berita-detail'] = async slug => {
-  $('#pubMain').innerHTML = `<section class="section"><div class="wrap">${skeleton(1)}</div></section>`;
-  const b = await pub('beritaDetail', { slug });
-  if (!b) { go('berita'); return; }
+  let b = S.det['b:' + slug];
+  if (!b) {
+    $('#pubMain').innerHTML = `<section class="section"><div class="wrap">${skeleton(1)}</div></section>`;
+    b = await pub('beritaDetail', { slug });
+    if (b && b !== true) S.det['b:' + slug] = b;
+  }
+  if (!b || b === true) { go('berita'); return; }
   $('#pubMain').innerHTML = `<section class="section"><div class="wrap" style="max-width:820px"><button class="btn btn-ghost btn-sm" onclick="go('berita')">${ic('arrow_back')} Kembali</button>
   <article class="card" style="overflow:hidden;margin-top:1rem">${b.gambar_id ? photo(b.gambar_id, 1200, 'auto') : ''}<div class="pad" style="padding:1.5rem">
   <div class="meta"><span class="badge b-sage">${esc(b.kategori)}</span><span>${fmtD(b.tgl_terbit)}</span><span>Oleh ${esc(b.penulis)}</span></div>
@@ -403,15 +447,19 @@ async function doLogin(e) {
   if (!pw) { toast('Periksa', 'Isi kata sandi.', 'warn'); return; }
   busy(b, true, 'Masuk…'); const d = await pub('login', p); busy(b, false);
   if (!d || d === true) return;
-  S.token = d.token; S.user = d.user; store.sset('sim_t', d.token); S.cache = {}; S.mods = null; S.refs = null;
+  S.token = d.token; S.user = d.user; store.sset('sim_t', d.token); S.cache = {}; S.cacheT = {}; S.mods = null; S.refs = null; persistClear();
+  const bo = d.boot || {};
+  if (bo.dashboard) { S.cache.dash = bo.dashboard; S.cacheT.dash = Date.now(); persistPut('dash', bo.dashboard); }
+  if (Array.isArray(bo.modSchema)) { S.mods = bo.modSchema; S.modsAt = Date.now(); persistPut('__mods', S.mods); }
+  if (bo.mRefs) { S.refs = bo.mRefs; S.refsAt = Date.now(); persistPut('__refs', S.refs); }
   toast('Selamat datang', d.user.nama); enterAdmin(d.wajibGanti);
 }
 function forceLogout() {
-  S.token = null; S.user = null; S.cache = {}; S.mods = null; S.refs = null; store.sset('sim_t', null);
+  persistClear(); S.token = null; S.user = null; S.cache = {}; S.cacheT = {}; S.mods = null; S.refs = null; store.sset('sim_t', null);
   showPublic(); go('login'); toast('Sesi berakhir', 'Silakan masuk kembali.', 'warn');
 }
 async function logout() {
-  await api('logout', {}, true); S.token = null; S.user = null; S.cache = {}; S.mods = null; S.refs = null; store.sset('sim_t', null);
+  await api('logout', {}, true); persistClear(); S.token = null; S.user = null; S.cache = {}; S.cacheT = {}; S.mods = null; S.refs = null; store.sset('sim_t', null);
   closeModal(); showPublic(); go('beranda');
 }
 function logoutToPublic() { showPublic(); go('beranda'); refreshPublic(); }
@@ -420,7 +468,8 @@ async function refreshPublic() {
   let r = null;
   try { r = await run('apiPublic', 'bundle', {}); } catch (e) { return; }
   if (!r || !r.success) return;
-  S.cfg = r.data.cfg; S.berita = r.data.berita; S.peng = r.data.pengumuman; S.loadedAt = Date.now(); S.galeri = null; S.unduhan = null; S.karya = null;
+  S.cfg = r.data.cfg; S.berita = r.data.berita; S.peng = r.data.pengumuman; S.loadedAt = Date.now(); S.galeri = null; S.unduhan = null; S.karya = null; S.det = {};
+  lsJ.set('sim_bundle', { t: Date.now(), d: r.data });
   if (S.mode === 'public') { setBrand(); renderTop(); renderFoot(); renderNav(); if (PUB_REFRESH.includes(S.page)) PUB[S.page](); }
 }
 
@@ -429,7 +478,38 @@ function enterAdmin(wajib) {
   try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
   S.mode = 'admin'; $('#pub').hidden = true; $('#adm').hidden = false; setBrand();
   $('#userName').textContent = S.user.nama;
-  S.mods = S.mods || []; renderMenu(); goA('dashboard'); if (wajib) pwModal(true); loadMods();
+  if (!S.mods || !S.mods.length) persistHydrate();
+  S.mods = S.mods || []; renderMenu(); goA('dashboard'); if (wajib) pwModal(true);
+  if (!S.mods.length || Date.now() - (S.modsAt || 0) > 60000) loadMods();
+  clearTimeout(S.pfT); S.pfT = setTimeout(idlePrefetch, 1500);
+}
+function prefetchSpec(k) {
+  if (k.indexOf('m:') === 0) return ['mList', { mod: k.slice(2) }, 'm_' + k.slice(2)];
+  return { berita: ['kontenList', { table: 'berita' }, 'k_berita'], pengumuman: ['kontenList', { table: 'pengumuman' }, 'k_pengumuman'],
+    pengguna: ['userList', {}, 'users'], pesan: ['pesanList', {}, 'pesan'], ppdb: ['ppdbList', {}, 'ppdb'], karya: ['karyaList', {}, 'karya'],
+    suratkeluar: ['suratList', {}, 'surat'], portal: ['siswaSaya', {}, 'portal'] }[k] || null;
+}
+function prefetchPage(k) {
+  if (!S.token || S.mode !== 'admin') return;
+  const sp = prefetchSpec(k); if (!sp) return;
+  const key = sp[2];
+  if (S.pf[key]) return S.pf[key];
+  if (S.cache[key] && Date.now() - (S.cacheT[key] || 0) < 30000) return;
+  S.pf[key] = api(sp[0], sp[1], true).then(d => {
+    if (d !== undefined) { S.cache[key] = d; S.cacheT[key] = Date.now(); persistPut(key, d); }
+    return d;
+  }).finally(() => { delete S.pf[key]; });
+  return S.pf[key];
+}
+async function idlePrefetch() {
+  const tok = S.token; if (!tok || S.mode !== 'admin') return;
+  const all = menuFor(S.user.peran).filter(x => x[0].charAt(0) !== '_' && x[0] !== 'dashboard' && x[0] !== S.adm && prefetchSpec(x[0]));
+  const items = all.filter(x => x[0].indexOf('m:') === 0).slice(0, 6).concat(all.filter(x => x[0].indexOf('m:') !== 0).slice(0, 3));
+  for (const it of items) {
+    if (S.token !== tok || S.mode !== 'admin') return;
+    await prefetchPage(it[0]);
+    await new Promise(r => setTimeout(r, 500));
+  }
 }
 function toggleSide(on) { $('#side').classList.toggle('open', on); $('#scrim').classList.toggle('open', on); }
 function goA(k) {
@@ -442,14 +522,16 @@ function goA(k) {
 const HOLDERS = { k_berita: '#ktable', k_pengumuman: '#ktable', pesan: '#ptable', users: '#utable', log: '#ltable' };
 async function swr(key, action, payload, page, render) {
   const nav = S.navTok, hold = HOLDERS[key] || (key.indexOf('m_') === 0 ? '#mtable' : ''), box = () => (hold && $(hold)) || $('#admMain');
-  if (S.cache[key]) render(S.cache[key]); else box().innerHTML = skeleton();
-  const d = await api(action, payload);
+  const had = S.cache[key], fresh = had && Date.now() - (S.cacheT[key] || 0) < 12000;
+  if (had) render(had); else box().innerHTML = skeleton();
+  if (fresh) return;
+  const d = await (S.pf[key] || api(action, payload));
   if (nav !== S.navTok) return;
   if (d === undefined) {
     if (!S.cache[key] && S.adm === page) box().innerHTML = `<div class="empty">${ic('cloud_off')}Gagal memuat data.<br><button class="btn btn-outline btn-sm" style="margin-top:.75rem" onclick="goA('${page}')">Coba lagi</button></div>`;
     return;
   }
-  S.cache[key] = d; if (S.adm === page) render(d);
+  S.cache[key] = d; S.cacheT[key] = Date.now(); persistPut(key, d); if (S.adm === page) render(d);
 }
 function navGuard() { const nav = S.navTok; return () => nav === S.navTok; }
 function openUserMenu() {
@@ -694,7 +776,7 @@ const SET_GROUPS = [
   { t: 'Akademik & Rapor', f: [['tahun_ajaran', 'Tahun ajaran (mis. 2026/2027)'], ['semester', 'Semester aktif', 'opt', 'Ganjil,Genap'], ['sem_mulai', 'Semester mulai', 'date'], ['sem_selesai', 'Semester selesai', 'date'],
     ['bobot_formatif', 'Bobot Formatif (%)'], ['bobot_sumatif', 'Bobot Sumatif (%)'], ['bobot_sas', 'Bobot SAS (%)'], ['nip_kepala', 'NIP Kepala Madrasah'],
     ['ttd_kepala_id', 'Tanda tangan Kepala Madrasah (PNG, latar transparan)', 'imgp', 500],
-    ['hari_sekolah', 'Hari sekolah efektif (urutan sesuai pilihan Anda)']], hint: 'Tahun ajaran dan semester aktif menentukan data nilai dan rapor yang dikerjakan guru. Isi "Hari sekolah efektif" dengan hari yang dipakai untuk Jadwal Pelajaran, dipisah koma, misalnya Senin,Selasa,Rabu,Kamis,Sabtu,Minggu jika Jumat libur dan Minggu tetap masuk. Kosongkan untuk memakai bawaan Senin–Sabtu.' }
+    ['hari_sekolah', 'Hari sekolah efektif (urutan sesuai pilihan Anda)']], hint: 'Tahun ajaran dan semester aktif menentukan data nilai dan rapor yang dikerjakan guru. Isi "Hari sekolah efektif" dengan hari yang dipakai untuk Jadwal Pelajaran, dipisah koma, misalnya Senin,Selasa,Rabu,Kamis,Sabtu,Ahad jika Jumat libur dan Ahad tetap masuk (bawaan madrasah ini). Nama hari yang dikenali: Senin, Selasa, Rabu, Kamis, Jumat, Sabtu, Ahad (Minggu otomatis dibaca Ahad).' }
 ];
 ADM.pengaturan = () => swr('cfg', 'settingsGet', {}, 'pengaturan', c => {
   $('#admMain').innerHTML = `<div class="row" style="margin-bottom:1rem"><p class="muted" style="margin:0;flex:1">Perubahan tampil di website setelah disimpan.</p><button class="btn btn-primary" id="setSave" onclick="saveSettings()">${ic('save')} Simpan Pengaturan</button></div>` +
@@ -729,7 +811,7 @@ async function restore(id, nama) {
   if (!await confirmBox('Data saat ini akan ditimpa dengan isi "' + nama + '". Sistem otomatis membuat backup pengaman terlebih dahulu.', { danger: true, ok: 'Pulihkan', type: 'PULIHKAN' })) return;
   modal({ title: 'Memulihkan…', lock: true, body: `<div class="center"><div class="spin" style="margin:0 auto 1rem"></div><p>Mohon tunggu, jangan tutup halaman.</p></div>` });
   const r = await api('backupRestore', { fileId: id, konfirmasi: 'PULIHKAN' }); closeModal();
-  if (r !== undefined) { S.cache = {}; S.mods = null; S.refs = null; toast('Berhasil', 'Data dipulihkan. Muat ulang halaman bila ada data yang belum berubah.'); ADM.backup(); }
+  if (r !== undefined) { S.cache = {}; S.cacheT = {}; persistClear(); S.mods = null; S.refs = null; toast('Berhasil', 'Data dipulihkan. Muat ulang halaman bila ada data yang belum berubah.'); ADM.backup(); }
 }
 
 ADM.log = () => {
@@ -739,7 +821,8 @@ ADM.log = () => {
   });
 };
 const REFKEY = { id_rombel: 'rombel', id_mapel: 'mapel', id_guru: 'guru', id_wali: 'guru', id_siswa: 'siswa', id_ekskul: 'ekskul', id_pejabat: 'pejabat', id_jenis: 'jenis_pel', id_pelapor: 'guru', id_konselor: 'guru', id_pembina: 'guru', id_ruang: 'ruang', id_inventaris: 'inventaris' };
-const HARI_URUT = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+const HARI_URUT = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Ahad'];
+const hariIdx = h => HARI_URUT.indexOf(h === 'Minggu' ? 'Ahad' : h);
 const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 const xlsDate = v => {
   if (!(v instanceof Date)) return v;
@@ -748,9 +831,15 @@ const xlsDate = v => {
 };
 const opts = (arr, sel, blank) => (blank ? `<option value="">${esc(blank)}</option>` : '') + arr.map(o => `<option value="${esc(o.id)}" ${o.id === sel ? 'selected' : ''}>${esc(o.label)}</option>`).join('');
 async function loadRefs(force) {
-  if (S.refs && !force && Date.now() - (S.refsAt || 0) < 60000) return S.refs;
+  if (S.refs && !force) {
+    if (Date.now() - (S.refsAt || 0) > 60000 && !S.refsBusy) {
+      S.refsBusy = true;
+      api('mRefs', {}, true).then(d => { if (d && d !== true) { S.refs = d; S.refsAt = Date.now(); persistPut('__refs', d); } }).finally(() => { S.refsBusy = false; });
+    }
+    return S.refs;
+  }
   const d = await api('mRefs');
-  if (d && d !== true) { S.refs = d; S.refsAt = Date.now(); }
+  if (d && d !== true) { S.refs = d; S.refsAt = Date.now(); persistPut('__refs', d); }
   return S.refs || { rombel: [], guru: [], mapel: [] };
 }
 function refLabel(k, id) {
@@ -759,7 +848,7 @@ function refLabel(k, id) {
 }
 async function loadMods() {
   const d = await api('modSchema');
-  S.mods = Array.isArray(d) ? d : [];
+  S.mods = Array.isArray(d) ? d : []; S.modsAt = Date.now(); persistPut('__mods', S.mods);
   renderMenu();
 }
 function menuFor(r) {
@@ -789,7 +878,7 @@ function menuFor(r) {
 }
 function renderMenu() {
   $('#admNav').innerHTML = menuFor(S.user.peran).map(([k, i, l]) => k.startsWith('_') ? `<div class="sec">${esc(l)}</div>` :
-    `<a class="sl ${S.adm === k ? 'active' : ''}" href="javascript:void(0)" data-k="${esc(k)}" onclick="goA('${esc(k)}')">${ic(i)}${esc(l)}</a>`).join('');
+    `<a class="sl ${S.adm === k ? 'active' : ''}" href="javascript:void(0)" data-k="${esc(k)}" onclick="goA('${esc(k)}')" onpointerenter="prefetchPage('${esc(k)}')" ontouchstart="prefetchPage('${esc(k)}')">${ic(i)}${esc(l)}</a>`).join('');
 }
 function jadwalCard(j) {
   return `<div class="card pad" style="margin-bottom:1.25rem"><h3 style="margin-bottom:.75rem">${ic('today')} Jadwal Hari Ini (${esc(j.hari)})</h3>${j.items.length ?
@@ -831,7 +920,7 @@ async function modPage(key) {
 function drawMod() {
   const m = S.m.m, q = S.m.q;
   const rows = S.m.rows.filter(r => (!S.m.f || r[m.filter] === S.m.f) && (!q || m.list.map(k => REFKEY[k] ? refLabel(k, r[k]) : r[k]).join(' ').toLowerCase().includes(q)));
-  if (m.sort === 'hari') rows.sort((a, b) => HARI_URUT.indexOf(a.hari) - HARI_URUT.indexOf(b.hari) || Number(a.jam_ke) - Number(b.jam_ke));
+  if (m.sort === 'hari') rows.sort((a, b) => hariIdx(a.hari) - hariIdx(b.hari) || Number(a.jam_ke) - Number(b.jam_ke));
   else if (m.sort === 'tanggal' || m.sort === 'tgl_kegiatan' || m.sort === 'tgl_terima') rows.sort((a, b) => String(b.tanggal).localeCompare(String(a.tanggal)));
   else if (m.sort) rows.sort((a, b) => String(a[m.sort]).localeCompare(String(b[m.sort])));
   $('#mtable').innerHTML = rows.length ? `<table class="tbl"><thead><tr>${m.list.map(k => `<th>${esc(colLabel(m, k))}</th>`).join('')}${m.w ? '<th></th>' : ''}</tr></thead><tbody>${rows.map(r => `<tr>${m.list.map(k => `<td>${cellOf(m, k, r)}</td>`).join('')}${m.w ?
@@ -1254,8 +1343,12 @@ function drawKarya() {
     (list.length ? `<div class="grid g3">${list.map(karyaCard).join('')}</div>` : emptyBox('edit_note', 'Belum ada karya yang diterbitkan.'));
 }
 PUB['karya-detail'] = async slug => {
-  $('#pubMain').innerHTML = `<section class="section"><div class="wrap">${skeleton(1)}</div></section>`;
-  const d = await pub('karyaDetail', { slug: slug });
+  let d = S.det['k:' + slug];
+  if (!d) {
+    $('#pubMain').innerHTML = `<section class="section"><div class="wrap">${skeleton(1)}</div></section>`;
+    d = await pub('karyaDetail', { slug: slug });
+    if (d && d !== true) S.det['k:' + slug] = d;
+  }
   if (!d || d === true) { go('karya'); return; }
   $('#pubMain').innerHTML = `<section class="section"><div class="wrap" style="max-width:780px"><button class="btn btn-ghost btn-sm" onclick="go('karya')">${ic('arrow_back')} Kembali</button><article class="card pad" style="margin-top:1rem;padding:1.5rem">
     <div class="meta"><span class="badge b-sage">${esc(d.kategori)}</span><span>${esc(fmtD(d.tgl_terbit))}</span></div><h1 style="font-size:1.8rem;margin:.75rem 0">${esc(d.judul)}</h1><p class="muted">Oleh <b>${esc(d.nama)}</b>${d.kelas ? ' · ' + esc(d.kelas) : ''}</p><div class="prose">${para(d.isi)}</div></article></div></section>`;
