@@ -198,12 +198,12 @@ async function startApp() {
     applyTheme();
     const cb = lsJ.get('sim_bundle');
     if (cb && cb.d && cb.d.cfg && cb.d.cfg.nama_madrasah && Date.now() - cb.t < 604800000) {
-      S.cfg = cb.d.cfg; S.berita = cb.d.berita; S.peng = cb.d.pengumuman; S.loadedAt = cb.t;
+      S.cfg = cb.d.cfg; S.berita = cb.d.berita; S.peng = cb.d.pengumuman; S.prestasi = cb.d.prestasi || []; S.agenda = cb.d.agenda || []; S.loadedAt = cb.t;
       firstRender();
     } else {
       const r = await run('apiPublic', 'bundle', {});
       if (!r || !r.success) throw new Error((r && r.message) || 'Tidak ada respons dari server.');
-      S.cfg = r.data.cfg; S.berita = r.data.berita; S.peng = r.data.pengumuman; S.loadedAt = Date.now();
+      S.cfg = r.data.cfg; S.berita = r.data.berita; S.peng = r.data.pengumuman; S.prestasi = r.data.prestasi || []; S.agenda = r.data.agenda || []; S.loadedAt = Date.now();
       lsJ.set('sim_bundle', { t: Date.now(), d: r.data });
       firstRender();
     }
@@ -220,6 +220,10 @@ async function prefetchPublic() {
     try { const r = await run('apiPublic', act, {}); if (r && r.success && !S[fld]) S[fld] = r.data || []; } catch (e) { return; }
     await new Promise(r => setTimeout(r, 700));
   }
+  try {
+    if (!S.guruPub) { const r = await run('apiPublic', 'guruPublik', {}); if (r && r.success) S.guruPub = r.data || []; await new Promise(r2 => setTimeout(r2, 700)); }
+    if (S.cfg.jadwal_publik === 'Ya' && !S.jadwalPub) { const r = await run('apiPublic', 'jadwalPublik', {}); if (r && r.success) S.jadwalPub = r.data; }
+  } catch (e) { return; }
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => startApp()); else Promise.resolve().then(startApp);
 function setBrand() {
@@ -236,8 +240,8 @@ function updatePanelBtn() {
 function showPublic() { S.mode = 'public'; $('#adm').hidden = true; $('#pub').hidden = false; setBrand(); renderTop(); renderFoot(); updatePanelBtn(); }
 
 const PUB = {};
-const PUB_PATH = { beranda: '', profil: 'profil', berita: 'berita', pengumuman: 'pengumuman', galeri: 'galeri', karya: 'karya', unduhan: 'unduhan', ppdb: 'ppdb', kontak: 'kontak', login: 'login' };
-const PUB_TITLE = { beranda: '', profil: 'Profil', berita: 'Berita', pengumuman: 'Pengumuman', galeri: 'Galeri', karya: 'Karya Siswa', unduhan: 'Unduhan', ppdb: 'PPDB Online', kontak: 'Kontak', login: 'Masuk', 'berita-detail': 'Berita', 'karya-detail': 'Karya Siswa' };
+const PUB_PATH = { beranda: '', profil: 'profil', berita: 'berita', pengumuman: 'pengumuman', galeri: 'galeri', karya: 'karya', prestasi: 'prestasi', agenda: 'agenda', jadwal: 'jadwal', unduhan: 'unduhan', ppdb: 'ppdb', kontak: 'kontak', login: 'login' };
+const PUB_TITLE = { beranda: '', profil: 'Profil', berita: 'Berita', pengumuman: 'Pengumuman', galeri: 'Galeri', karya: 'Karya Siswa', prestasi: 'Prestasi', agenda: 'Agenda', jadwal: 'Jadwal Pelajaran', unduhan: 'Unduhan', ppdb: 'PPDB Online', kontak: 'Kontak', login: 'Masuk', 'berita-detail': 'Berita', 'karya-detail': 'Karya Siswa' };
 function hashFor(page, arg) {
   if (page === 'berita-detail') return '#/berita/' + arg;
   if (page === 'karya-detail') return '#/karya/' + arg;
@@ -267,8 +271,8 @@ function route() {
 window.addEventListener('hashchange', route);
 window.addEventListener('popstate', route);
 function renderNav() {
-  const items = [['beranda', 'Beranda'], ['profil', 'Profil'], ['berita', 'Berita'], ['pengumuman', 'Pengumuman'], ['galeri', 'Galeri'], ['karya', 'Karya Siswa'], ['unduhan', 'Unduhan'], ['ppdb', 'PPDB'], ['kontak', 'Kontak']]
-    .filter(([k]) => k !== 'ppdb' || S.cfg.ppdb_aktif === 'Ya');
+  const items = [['beranda', 'Beranda'], ['profil', 'Profil'], ['berita', 'Berita'], ['pengumuman', 'Pengumuman'], ['galeri', 'Galeri'], ['karya', 'Karya Siswa'], ['prestasi', 'Prestasi'], ['agenda', 'Agenda'], ['jadwal', 'Jadwal'], ['unduhan', 'Unduhan'], ['ppdb', 'PPDB'], ['kontak', 'Kontak']]
+    .filter(([k]) => (k !== 'ppdb' || S.cfg.ppdb_aktif === 'Ya') && (k !== 'jadwal' || S.cfg.jadwal_publik === 'Ya'));
   const cur = S.page === 'berita-detail' ? 'berita' : S.page === 'karya-detail' ? 'karya' : S.page;
   $('#pubNav').innerHTML = items.map(([k, l]) => `<a href="#/${PUB_PATH[k]}" class="nl ${cur === k ? 'active' : ''}" onclick="go('${k}');return false">${l}</a>`).join('');
 }
@@ -325,6 +329,10 @@ PUB.beranda = () => {
   <section class="section"><div class="wrap"><div class="sec-head"><div><div class="eyebrow">Informasi Resmi</div><h2>Pengumuman</h2></div>
     <button class="btn btn-outline btn-sm" onclick="go('pengumuman')">Semua Pengumuman</button></div>
     ${S.peng.length ? `<div class="grid g2">${S.peng.slice(0, 4).map(anncCard).join('')}</div>` : emptyBox('campaign', 'Belum ada pengumuman aktif.')}</div></section>
+  ${agendaTerdekat().length ? `<section class="section alt"><div class="wrap"><div class="sec-head"><div><div class="eyebrow">Kalender Madrasah</div><h2>Agenda Mendatang</h2></div>
+    <button class="btn btn-outline btn-sm" onclick="go('agenda')">Semua Agenda</button></div><div class="grid g2">${agendaTerdekat().slice(0, 4).map(agendaCard).join('')}</div></div></section>` : ''}
+  ${(S.prestasi || []).length ? `<section class="section"><div class="wrap"><div class="sec-head"><div><div class="eyebrow">Membanggakan</div><h2>Prestasi</h2></div>
+    <button class="btn btn-outline btn-sm" onclick="go('prestasi')">Semua Prestasi</button></div><div class="grid g3">${S.prestasi.slice(0, 3).map(prestasiCard).join('')}</div></div></section>` : ''}
   ${c.ppdb_aktif === 'Ya' ? `<section class="section"><div class="wrap"><div class="hero card pad" style="border-radius:20px;padding:2rem"><h2>Penerimaan Peserta Didik Baru telah dibuka</h2>
     <p style="margin-top:.5rem">Dapatkan informasi persyaratan dan jadwal pendaftaran.</p><button class="btn btn-gold" onclick="go('ppdb')">Informasi PPDB</button></div></div></section>` : ''}`;
 };
@@ -333,15 +341,17 @@ PUB.profil = () => {
   const c = S.cfg;
   const blk = (t, body) => body ? `<section class="card pad" style="margin-bottom:1.25rem"><h2 style="margin-bottom:.75rem">${t}</h2><div class="prose">${body}</div></section>` : '';
   const misi = c.misi ? `<ol style="padding-left:1.2rem">${c.misi.split('\n').filter(x => x.trim()).map(x => `<li style="margin-bottom:.4rem">${esc(x)}</li>`).join('')}</ol>` : '';
-  const any = c.sejarah || c.visi || c.misi || c.tujuan || c.struktur_img_id;
+  const any = c.sejarah || c.visi || c.misi || c.tujuan || c.struktur_img_id || c.sarpras;
   $('#pubMain').innerHTML = `<section class="hero" style="padding:2.5rem 0"><div class="wrap"><div class="eyebrow" style="color:#F6DE9C">Profil</div><h1>Profil Madrasah</h1></div></section>
   <section class="section"><div class="wrap" style="max-width:880px">
-  ${blk('Sejarah', c.sejarah ? para(c.sejarah) : '')}${blk('Visi', c.visi ? para(c.visi) : '')}${blk('Misi', misi)}${blk('Tujuan Pendidikan', c.tujuan ? para(c.tujuan) : '')}
+  ${blk('Sejarah', c.sejarah ? para(c.sejarah) : '')}${blk('Visi', c.visi ? para(c.visi) : '')}${blk('Misi', misi)}${blk('Tujuan Pendidikan', c.tujuan ? para(c.tujuan) : '')}${blk('Sarana dan Prasarana', c.sarpras ? para(c.sarpras) : '')}
   ${c.struktur_img_id ? `<section class="card pad" style="margin-bottom:1.25rem"><h2 style="margin-bottom:.75rem">Struktur Organisasi</h2><img style="width:100%;border-radius:12px" alt="Bagan struktur organisasi" src="${img(c.struktur_img_id, 1400)}"></section>` : ''}
   ${!any ? emptyBox('info', 'Konten profil belum diisi oleh admin.') : ''}
+  <div id="guruPub"></div>
   <section class="card pad"><h2 style="margin-bottom:.75rem">Identitas Madrasah</h2><table class="tbl"><tbody>
     <tr><td><b>Nama</b></td><td>${esc(c.nama_madrasah)}</td></tr><tr><td><b>Yayasan</b></td><td>${esc(c.nama_yayasan)}</td></tr>
     <tr><td><b>NPSN</b></td><td>${esc(c.npsn)}</td></tr><tr><td><b>NSM</b></td><td>${esc(c.nsm)}</td></tr><tr><td><b>Alamat</b></td><td>${esc(c.alamat)}</td></tr></tbody></table></section></div></section>`;
+  loadGuruPub();
 };
 
 PUB.berita = () => {
@@ -468,7 +478,7 @@ async function refreshPublic() {
   let r = null;
   try { r = await run('apiPublic', 'bundle', {}); } catch (e) { return; }
   if (!r || !r.success) return;
-  S.cfg = r.data.cfg; S.berita = r.data.berita; S.peng = r.data.pengumuman; S.loadedAt = Date.now(); S.galeri = null; S.unduhan = null; S.karya = null; S.det = {};
+  S.cfg = r.data.cfg; S.berita = r.data.berita; S.peng = r.data.pengumuman; S.prestasi = r.data.prestasi || []; S.agenda = r.data.agenda || []; S.guruPub = null; S.jadwalPub = null; S.loadedAt = Date.now(); S.galeri = null; S.unduhan = null; S.karya = null; S.det = {};
   lsJ.set('sim_bundle', { t: Date.now(), d: r.data });
   if (S.mode === 'public') { setBrand(); renderTop(); renderFoot(); renderNav(); if (PUB_REFRESH.includes(S.page)) PUB[S.page](); }
 }
@@ -766,7 +776,7 @@ const SET_GROUPS = [
     ['stat_1_nilai', 'Statistik 1 — angka'], ['stat_1_label', 'Statistik 1 — label'], ['stat_2_nilai', 'Statistik 2 — angka'], ['stat_2_label', 'Statistik 2 — label'],
     ['stat_3_nilai', 'Statistik 3 — angka'], ['stat_3_label', 'Statistik 3 — label'], ['stat_4_nilai', 'Statistik 4 — angka'], ['stat_4_label', 'Statistik 4 — label']], hint: 'Isi statistik hanya jika datanya sudah terverifikasi; yang kosong tidak ditampilkan.' },
   { t: 'Sambutan Kepala Madrasah', f: [['kepala_nama', 'Nama Kepala Madrasah'], ['kepala_foto_id', 'Foto Kepala Madrasah', 'img', 900], ['sambutan', 'Teks sambutan', 'area']] },
-  { t: 'Profil Madrasah', f: [['sejarah', 'Sejarah', 'area'], ['visi', 'Visi', 'area'], ['misi', 'Misi (satu poin per baris)', 'area'], ['tujuan', 'Tujuan pendidikan', 'area'], ['struktur_img_id', 'Bagan struktur organisasi', 'img', 1600]] },
+  { t: 'Profil Madrasah', f: [['sejarah', 'Sejarah', 'area'], ['visi', 'Visi', 'area'], ['misi', 'Misi (satu poin per baris)', 'area'], ['tujuan', 'Tujuan pendidikan', 'area'], ['sarpras', 'Sarana dan prasarana (tampil di halaman Profil)', 'area'], ['struktur_img_id', 'Bagan struktur organisasi', 'img', 1600]] },
   { t: 'Kontak & Media Sosial', f: [['telp', 'Telepon'], ['wa', 'WhatsApp (mis. 0812…)'], ['email', 'Email resmi'], ['jam_layanan', 'Jam layanan'], ['ig', 'Instagram (URL lengkap)'], ['fb', 'Facebook (URL lengkap)'], ['tiktok', 'TikTok (URL lengkap)'], ['yt', 'YouTube (URL lengkap)'], ['maps_query', 'Lokasi untuk Google Maps']] },
   { t: 'PPDB', f: [['ppdb_aktif', 'Buka pendaftaran online', 'sel'], ['ppdb_tahun', 'Tahun ajaran penerimaan (mis. 2027/2028)'], ['ppdb_tingkat', 'Tingkat penerimaan siswa baru', 'opt', 'X,XI,XII'], ['ppdb_buka', 'Tanggal pendaftaran dibuka', 'date'], ['ppdb_tutup', 'Tanggal pendaftaran ditutup', 'date'],
     ['ppdb_jalur', 'Jalur pendaftaran (pisahkan dengan koma)'], ['ppdb_info', 'Informasi PPDB (persyaratan, jadwal, kontak panitia)', 'area']], hint: 'Pendaftaran online hanya aktif jika dibuka dan tanggal hari ini berada di antara tanggal buka dan tutup.' },
@@ -776,7 +786,8 @@ const SET_GROUPS = [
   { t: 'Akademik & Rapor', f: [['tahun_ajaran', 'Tahun ajaran (mis. 2026/2027)'], ['semester', 'Semester aktif', 'opt', 'Ganjil,Genap'], ['sem_mulai', 'Semester mulai', 'date'], ['sem_selesai', 'Semester selesai', 'date'],
     ['bobot_formatif', 'Bobot Formatif (%)'], ['bobot_sumatif', 'Bobot Sumatif (%)'], ['bobot_sas', 'Bobot SAS (%)'], ['nip_kepala', 'NIP Kepala Madrasah'],
     ['ttd_kepala_id', 'Tanda tangan Kepala Madrasah (PNG, latar transparan)', 'imgp', 500],
-    ['hari_sekolah', 'Hari sekolah efektif (urutan sesuai pilihan Anda)']], hint: 'Tahun ajaran dan semester aktif menentukan data nilai dan rapor yang dikerjakan guru. Isi "Hari sekolah efektif" dengan hari yang dipakai untuk Jadwal Pelajaran, dipisah koma, misalnya Senin,Selasa,Rabu,Kamis,Sabtu,Ahad jika Jumat libur dan Ahad tetap masuk (bawaan madrasah ini). Nama hari yang dikenali: Senin, Selasa, Rabu, Kamis, Jumat, Sabtu, Ahad (Minggu otomatis dibaca Ahad).' }
+    ['hari_sekolah', 'Hari sekolah efektif (urutan sesuai pilihan Anda)'], ['jadwal_publik', 'Tampilkan Jadwal Pelajaran di website', 'opt', 'Tidak,Ya'],
+    ['adm_guru_jenis', 'Jenis dokumen Administrasi Guru (pisahkan koma; kosong = bawaan)']], hint: 'Tahun ajaran dan semester aktif menentukan data nilai dan rapor yang dikerjakan guru. Isi "Hari sekolah efektif" dengan hari yang dipakai untuk Jadwal Pelajaran, dipisah koma, misalnya Senin,Selasa,Rabu,Kamis,Sabtu,Ahad jika Jumat libur dan Ahad tetap masuk (bawaan madrasah ini). Nama hari yang dikenali: Senin, Selasa, Rabu, Kamis, Jumat, Sabtu, Ahad (Minggu otomatis dibaca Ahad).' }
 ];
 ADM.pengaturan = () => swr('cfg', 'settingsGet', {}, 'pengaturan', c => {
   $('#admMain').innerHTML = `<div class="row" style="margin-bottom:1rem"><p class="muted" style="margin:0;flex:1">Perubahan tampil di website setelah disimpan.</p><button class="btn btn-primary" id="setSave" onclick="saveSettings()">${ic('save')} Simpan Pengaturan</button></div>` +
@@ -866,6 +877,7 @@ function menuFor(r) {
     if (g === 'Keuangan' && ['super_admin', 'kepala', 'bendahara', 'tu'].includes(r)) m.push(['tagihan', 'receipt_long', 'Tagihan dan Pembayaran']);
     if (g === 'Keuangan' && ['super_admin', 'kepala', 'bendahara'].includes(r)) m.push(['laporankeu', 'insights', 'Laporan Keuangan']);
     if (g === 'Perpustakaan' && ['super_admin', 'kepala', 'pustakawan', 'tu'].includes(r)) m.push(['sirkulasi', 'swap_horiz', 'Peminjaman']);
+    if (g === 'Akademik' && ['super_admin', 'kepala', 'tu'].includes(r)) m.push(['admguru', 'fact_check', 'Kelengkapan Adm. Guru']);
   });
   const pb = [];
   if (['super_admin', 'guru', 'wali_kelas'].includes(r)) pb.push(['absensi', 'how_to_reg', 'Absensi']);
@@ -907,7 +919,7 @@ async function modPage(key) {
   if (m.w && m.imp) tools.push(`<button class="btn btn-outline" onclick="modTemplate()">${ic('download')} Template Excel</button><button class="btn btn-outline" onclick="modPick()">${ic('upload_file')} Impor Excel</button>`);
   if (S.user.peran !== 'siswa') tools.push(`<button class="btn btn-outline" onclick="modCetak(this)">${ic('print')} Cetak PDF</button>`);
   (m.extra || []).forEach(x => { if (m.w) tools.push(`<button class="btn btn-outline" onclick="modExtra('${esc(x.a)}',this)">${ic(x.i)} ${esc(x.l)}</button>`); });
-  if (m.w) tools.push(`<button class="btn btn-primary" onclick="modForm()">${ic('add_circle')} Tambah</button>`);
+  if (m.w && !m.noAdd) tools.push(`<button class="btn btn-primary" onclick="modForm()">${ic('add_circle')} Tambah</button>`);
   $('#admMain').innerHTML = `<div class="toolbar"><input class="input" type="search" placeholder="Cari…" aria-label="Cari" oninput="S.m.q=this.value.toLowerCase();debounce(drawMod,150)()">
     ${m.filter ? '<select class="input" style="max-width:220px" id="mfilter" aria-label="Filter" onchange="S.m.f=this.value;drawMod()"></select>' : ''}<span style="flex:1"></span>${tools.join('')}</div>
     <div class="card"><div class="tbl-wrap" id="mtable">${skeleton()}</div></div>`;
@@ -932,7 +944,7 @@ function fieldHtml(f, v) {
   const lab = `<label class="label" for="${id}">${esc(f.l)}${f.req ? ' <span class="req">*</span>' : ''}</label>`;
   let c;
   if (f.t === 'img') c = imgField(id, v, 1400);
-  else if (f.t === 'pfile') c = privField(id, v);
+  else if (f.t === 'pfile') c = privField(id, v, f.doc);
   else if (f.t === 'file') c = fileField(id, v, '');
   else if (f.t === 'area') c = `<textarea id="${id}" class="input" maxlength="2000">${esc(v)}</textarea>`;
   else if (f.t === 'sel') c = `<select id="${id}" class="input"><option value="">—</option>${f.opt.map(o => `<option ${String(v) === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
@@ -1514,17 +1526,19 @@ const suratTemplate = (j, c) => ({
   'Surat Umum': `Dengan hormat,\n\n...............\n\nDemikian disampaikan, atas perhatian Bapak/Ibu diucapkan terima kasih.`
 }[j] || '');
 
-function privField(id, val) {
+const DOK_EXT = { 'application/pdf': 'pdf', 'image/png': 'png', 'image/jpeg': 'jpg', 'application/msword': 'doc', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.ms-excel': 'xls', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx', 'application/vnd.ms-powerpoint': 'ppt', 'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx' };
+function privField(id, val, doc) {
   return `<input type="hidden" id="${id}" value="${esc(val || '')}"><div id="${id}_p">${val ? '<span class="badge b-ok">Berkas tersimpan (privat)</span>' : ''}</div>
-    <input type="file" class="input" style="margin-top:.4rem" accept=".pdf,.jpg,.jpeg,.png" onchange="pickPriv(this,'${id}')" aria-label="Pilih berkas">`;
+    <input type="file" class="input" style="margin-top:.4rem" accept="${doc ? '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png' : '.pdf,.jpg,.jpeg,.png'}" onchange="pickPriv(this,'${id}')" aria-label="Pilih berkas">`;
 }
 async function pickPriv(input, id) {
   const f = input.files[0]; if (!f) return;
   try {
     toast('Mengunggah', 'Mohon tunggu…', 'warn');
     let data, mime;
-    if (f.type === 'application/pdf') { if (f.size > 4000000) throw new Error('PDF maksimal 4 MB.'); data = await fileB64(f); mime = f.type; }
-    else { const im = await fileToImage(f, 1800); data = im.data; mime = im.mime; }
+    if (f.type.indexOf('image/') === 0) { const im = await fileToImage(f, 1800); data = im.data; mime = im.mime; }
+    else { if (f.size > 4000000) throw new Error('Berkas maksimal 4 MB.'); data = await fileB64(f); mime = f.type || 'application/octet-stream'; }
     const d = await api('uploadPriv', { data: data, mime: mime, name: f.name });
     if (d === undefined) return;
     $('#' + id).value = d.id; $('#' + id + '_p').innerHTML = `<span class="badge b-ok">${esc(d.nama)} (privat)</span>`;
@@ -1534,10 +1548,13 @@ async function pickPriv(input, id) {
 }
 async function privLihat(id) {
   const d = await api('privLihat', { id: id }); if (d === undefined) return;
-  const url = 'data:' + d.mime + ';base64,' + d.base64;
-  modal({ title: 'Pratinjau Berkas', wide: true, body: d.mime === 'application/pdf' ? `<iframe title="Berkas" src="${url}" style="width:100%;height:65vh;border:1px solid var(--border);border-radius:10px"></iframe><p class="hint">Jika pratinjau kosong, klik Unduh.</p>` : `<img alt="Berkas" style="max-width:100%;border-radius:10px;background:#fff" src="${url}">`,
+  const url = 'data:' + d.mime + ';base64,' + d.base64, ext = DOK_EXT[d.mime] || 'bin';
+  const body = d.mime === 'application/pdf' ? `<iframe title="Berkas" src="${url}" style="width:100%;height:65vh;border:1px solid var(--border);border-radius:10px"></iframe><p class="hint">Jika pratinjau kosong, klik Unduh.</p>`
+    : d.mime.indexOf('image/') === 0 ? `<img alt="Berkas" style="max-width:100%;border-radius:10px" src="${url}">`
+    : `<div class="empty">${ic('description')}Berkas ${esc(ext.toUpperCase())} tidak dapat dipratinjau di sini.<br>Klik Unduh untuk membukanya.</div>`;
+  modal({ title: 'Pratinjau Berkas', wide: true, body: body,
     foot: `<button class="btn btn-outline" id="pvDl">${ic('download')} Unduh</button><button class="btn btn-primary" onclick="closeModal()">Tutup</button>` });
-  $('#pvDl').onclick = () => { const bin = atob(d.base64), arr = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i); download('berkas.' + (d.mime === 'application/pdf' ? 'pdf' : d.mime === 'image/png' ? 'png' : 'jpg'), new Blob([arr], { type: d.mime })); };
+  $('#pvDl').onclick = () => { const bin = atob(d.base64), arr = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i); download('berkas.' + ext, new Blob([arr], { type: d.mime })); };
 }
 function fillModFilter() {
   const m = S.m.m, el = $('#mfilter'); if (!m.filter || !el) return;
@@ -1807,3 +1824,72 @@ const kelasGender = nama => {
   const n = String(nama || '').toLowerCase(), l = /\b(putra|putera|ikhwan)\b/.test(n), p = /\b(putri|puteri|akhwat)\b/.test(n);
   return l && !p ? 'L' : p && !l ? 'P' : '';
 };
+
+ADM.admguru = async () => {
+  S.ag = { ta: '', sem: '' };
+  $('#admMain').innerHTML = `<div class="card pad"><div class="row"><div class="field" style="margin:0"><label class="label" for="ag_ta">Tahun ajaran</label><input id="ag_ta" class="input" style="max-width:150px" placeholder="otomatis"></div>
+    <div class="field" style="margin:0"><label class="label" for="ag_sm">Semester</label><select id="ag_sm" class="input"><option value="">Semester aktif</option><option>Ganjil</option><option>Genap</option></select></div>
+    <button class="btn btn-primary" onclick="admguruLoad()">${ic('fact_check')} Tampilkan</button><button class="btn btn-outline" onclick="admguruCetak(this)">${ic('print')} Cetak PDF</button></div></div><div id="agBody" style="margin-top:1rem">${skeleton(2)}</div>`;
+  admguruLoad();
+};
+async function admguruLoad() {
+  const ok2 = navGuard();
+  const d = await api('admGuruRekap', { tahun_ajaran: $('#ag_ta').value, semester: $('#ag_sm').value }); if (d === undefined || !ok2()) return;
+  const B = { 'Lengkap': 'b-ok', 'Diajukan': 'b-warn', 'Perlu Perbaikan': 'b-bad' }, short = { 'Lengkap': 'Lengkap', 'Diajukan': 'Diajukan', 'Perlu Perbaikan': 'Perbaikan' };
+  $('#agBody').innerHTML = `<p class="muted" style="margin:0 0 .75rem">Tahun ajaran ${esc(d.tahun_ajaran)}, Semester ${esc(d.semester)}. Pemeriksaan dilakukan Kepala Madrasah di menu Administrasi Guru.</p>
+    <div class="card"><div class="tbl-wrap">${d.rows.length ? `<table class="tbl"><thead><tr><th>Guru</th>${d.jenis.map(j => `<th>${esc(j)}</th>`).join('')}<th>Lengkap</th></tr></thead><tbody>${d.rows.map(x => `<tr><td><b>${esc(x.nama)}</b></td>${d.jenis.map(j => `<td>${x.status[j] ? `<span class="badge ${B[x.status[j]]}">${short[x.status[j]]}</span>` : '<span class="muted">-</span>'}</td>`).join('')}<td><b>${x.lengkap} / ${d.jenis.length}</b></td></tr>`).join('')}</tbody></table>` : emptyBox('folder_shared', 'Belum ada data guru.')}</div></div>`;
+}
+async function admguruCetak(btn) { busy(btn, true, 'Menyiapkan…'); const d = await api('admGuruCetak', { tahun_ajaran: $('#ag_ta').value, semester: $('#ag_sm').value }); busy(btn, false); if (d && d !== true) showPdf(d); }
+
+const pubHero = (eyebrow, title) => `<section class="hero" style="padding:2.5rem 0"><div class="wrap"><div class="eyebrow" style="color:#F6DE9C">${esc(eyebrow)}</div><h1>${esc(title)}</h1></div></section>`;
+const tglRange = (a, b) => !a ? '' : (!b || b === a) ? fmtD(a) : fmtD(a) + ' sampai ' + fmtD(b);
+const tglLokal = s => new Date(String(s) + 'T00:00:00');
+function agendaTerdekat() { const t = ymd(new Date()); return (S.agenda || []).filter(x => String(x.tgl_selesai || x.tgl_mulai) >= t); }
+function prestasiCard(x) {
+  return `<article class="card" style="overflow:hidden">${x.file_id ? photo(x.file_id, 700) : ''}<div class="pad"><span class="badge b-warn">${esc(x.peringkat || 'Prestasi')}</span> <span class="badge b-gray">${esc(x.tingkat)}</span>
+    <h3 style="margin:.6rem 0 .25rem">${esc(x.judul)}</h3><p style="margin:0"><b>${esc(x.nama)}</b>${x.kelas ? ' · ' + esc(x.kelas) : ''}</p>
+    <p class="muted" style="margin:.35rem 0 0;font-size:.85rem">${esc(fmtD(x.tanggal))}${x.penyelenggara ? ' · ' + esc(x.penyelenggara) : ''}</p>${x.deskripsi ? `<p style="margin:.6rem 0 0;font-size:.9rem">${esc(x.deskripsi)}</p>` : ''}</div></article>`;
+}
+function agendaCard(x) {
+  const d = tglLokal(x.tgl_mulai), ok = !isNaN(d);
+  return `<article class="card pad" style="display:flex;gap:1rem;align-items:flex-start"><div style="min-width:3.6rem;text-align:center;background:var(--primary);color:#fff;border-radius:12px;padding:.5rem .4rem"><b style="display:block;font-size:1.4rem;line-height:1">${ok ? d.getDate() : ''}</b><span style="font-size:.75rem;text-transform:uppercase">${ok ? esc(d.toLocaleDateString('id-ID', { month: 'short' })) : ''}</span></div>
+    <div style="flex:1"><span class="badge b-info">${esc(x.kategori)}</span><h3 style="margin:.4rem 0 .2rem">${esc(x.judul)}</h3><p class="muted" style="margin:0;font-size:.85rem">${esc(tglRange(x.tgl_mulai, x.tgl_selesai))}${x.waktu ? ' · ' + esc(x.waktu) : ''}${x.lokasi ? ' · ' + esc(x.lokasi) : ''}</p>${x.deskripsi ? `<p style="margin:.5rem 0 0;font-size:.9rem">${esc(x.deskripsi)}</p>` : ''}</div></article>`;
+}
+PUB.prestasi = () => {
+  const list = S.prestasi || [], tk = [...new Set(list.map(x => x.tingkat).filter(Boolean))];
+  $('#pubMain').innerHTML = pubHero('Membanggakan', 'Prestasi Siswa dan Guru') + `<section class="section"><div class="wrap">${list.length ?
+    `<div class="row" role="group" aria-label="Filter tingkat" style="margin-bottom:1rem"><button class="chip ${S.pt ? '' : 'on'}" onclick="S.pt='';PUB.prestasi()">Semua</button>${tk.map(k => `<button class="chip ${S.pt === k ? 'on' : ''}" onclick="S.pt='${esc(k)}';PUB.prestasi()">${esc(k)}</button>`).join('')}</div>
+    <div class="grid g3">${list.filter(x => !S.pt || x.tingkat === S.pt).map(prestasiCard).join('')}</div>` : emptyBox('emoji_events', 'Belum ada prestasi yang ditampilkan.')}</div></section>`;
+};
+PUB.agenda = () => {
+  const t = ymd(new Date()), all = S.agenda || [], up = all.filter(x => String(x.tgl_selesai || x.tgl_mulai) >= t), past = all.filter(x => String(x.tgl_selesai || x.tgl_mulai) < t).reverse();
+  $('#pubMain').innerHTML = pubHero('Kalender Madrasah', 'Agenda Kegiatan') + `<section class="section"><div class="wrap">
+    <h2 style="margin-bottom:1rem">Akan Datang</h2>${up.length ? `<div class="grid g2" style="margin-bottom:2rem">${up.map(agendaCard).join('')}</div>` : emptyBox('event', 'Belum ada agenda mendatang.')}
+    ${past.length ? `<h2 style="margin:2rem 0 1rem">Telah Berlalu</h2><div class="grid g2" style="opacity:.8">${past.map(agendaCard).join('')}</div>` : ''}</div></section>`;
+};
+PUB.jadwal = async () => {
+  $('#pubMain').innerHTML = pubHero('Akademik', 'Jadwal Pelajaran') + `<section class="section"><div class="wrap" id="jdBody">${skeleton(2)}</div></section>`;
+  if (!S.jadwalPub) {
+    try { const r = await run('apiPublic', 'jadwalPublik', {}); S.jadwalPub = r && r.success ? r.data : { aktif: false }; } catch (e) { S.jadwalPub = { aktif: false }; }
+  }
+  if (S.page === 'jadwal') drawJadwalPub();
+};
+function drawJadwalPub() {
+  const d = S.jadwalPub, box = $('#jdBody'); if (!box) return;
+  if (!d || !d.aktif || !d.kelas.length) { box.innerHTML = emptyBox('calendar_month', 'Jadwal pelajaran belum dipublikasikan.'); return; }
+  const k = S.jk && d.kelas.some(x => x.id === S.jk) ? S.jk : d.kelas[0].id; S.jk = k;
+  const rows = d.items.filter(x => x.kelas === k);
+  box.innerHTML = `<div class="toolbar"><label class="label" for="jd_k" style="margin:0">Kelas</label><select id="jd_k" class="input" style="max-width:240px" onchange="S.jk=this.value;drawJadwalPub()">${d.kelas.map(x => `<option value="${esc(x.id)}" ${x.id === k ? 'selected' : ''}>${esc(x.nama)}</option>`).join('')}</select></div>
+    <div class="grid g2" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))">${d.hari.map(h => { const r = rows.filter(x => x.hari === h || (h === 'Ahad' && x.hari === 'Minggu'));
+      return r.length ? `<div class="card"><div class="pad"><h3>${esc(h)}</h3></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Jam</th><th>Mata Pelajaran</th><th>Guru</th></tr></thead><tbody>${r.map(x => `<tr><td>${x.jam}</td><td>${esc(x.mapel)}${x.ruang ? `<div class="hint">${esc(x.ruang)}</div>` : ''}</td><td>${esc(x.guru)}</td></tr>`).join('')}</tbody></table></div></div>` : ''; }).join('')}</div>`;
+}
+async function loadGuruPub() {
+  if (!S.guruPub) {
+    try { const r = await run('apiPublic', 'guruPublik', {}); S.guruPub = r && r.success ? (r.data || []) : []; } catch (e) { S.guruPub = []; }
+  }
+  const box = $('#guruPub'); if (!box || S.page !== 'profil' || !S.guruPub.length) return;
+  const ini = n => String(n || '').replace(/^(Drs?\.?|Hj?\.?|Ir\.?)\s+/i, '').split(/\s+/).slice(0, 2).map(x => x.charAt(0)).join('').toUpperCase();
+  box.innerHTML = `<section class="card pad" style="margin-bottom:1.25rem"><h2 style="margin-bottom:1rem">Guru dan Tenaga Kependidikan</h2><div class="grid g3" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">${S.guruPub.map(g =>
+    `<div style="text-align:center">${g.foto_id ? `<img alt="" loading="lazy" src="${img(g.foto_id, 300)}" style="width:96px;height:96px;object-fit:cover;border-radius:50%;margin:0 auto">` : `<div style="width:96px;height:96px;border-radius:50%;margin:0 auto;display:grid;place-items:center;background:var(--primary);color:#fff;font-weight:700;font-size:1.4rem">${esc(ini(g.nama))}</div>`}
+    <p style="margin:.6rem 0 0;font-weight:600">${esc(g.nama)}</p><p class="muted" style="margin:0;font-size:.82rem">${esc(g.jabatan || g.mapel || '')}</p></div>`).join('')}</div></section>`;
+}
