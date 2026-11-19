@@ -272,18 +272,24 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .85rem; }
 @media (max-width: 760px) { .hm-stat:nth-child(odd) { border-left: 0; } .hm-stat:nth-child(n+3) { border-top: 1px solid var(--border); } }
 /* sambutan + menu cepat */
 .hm-row { display: grid; grid-template-columns: 1.85fr 1fr; gap: 1rem; }
-.hm-welcome { position: relative; overflow: hidden; background: linear-gradient(120deg, var(--sage), var(--surface) 72%); border: 1px solid var(--border); border-radius: 18px; display: grid; grid-template-columns: minmax(150px, 36%) 1fr; min-height: 220px; }
-.hm-welcome .pic { display: flex; align-items: flex-end; justify-content: center; background: radial-gradient(circle at 40% 85%, rgba(23,107,69,.32), transparent 70%); }
-.hm-welcome .pic img { width: 100%; height: 100%; object-fit: cover; object-position: center top; -webkit-mask-image: linear-gradient(90deg, #000 72%, transparent); mask-image: linear-gradient(90deg, #000 72%, transparent); }
-.hm-welcome .pic .material-symbols-outlined { font-size: 110px; color: var(--primary); opacity: .35; }
-.hm-welcome .txt { padding: 1rem 1.3rem 1.1rem 1rem; align-self: center; }
+.hm-welcome { position: relative; overflow: hidden; background: linear-gradient(120deg, var(--sage), var(--surface) 72%); border: 1px solid var(--border); border-radius: 18px; display: flex; gap: 1.2rem; align-items: flex-start; padding: 1rem 1.2rem 1rem 1rem; }
+.hm-welcome .pic { box-sizing: border-box; flex: none; width: clamp(132px, 13vw, 168px); aspect-ratio: 4 / 6; border-radius: 14px; overflow: hidden; background: radial-gradient(circle at 50% 85%, rgba(23,107,69,.35), var(--sage) 75%); display: grid; place-items: center; box-shadow: 0 10px 24px -12px rgba(16,69,47,.55); border: 3px solid var(--surface); }
+.hm-welcome .pic img { width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block; }
+.hm-welcome .pic .material-symbols-outlined { font-size: 84px; color: var(--primary); opacity: .4; }
+.hm-welcome .txt { min-width: 0; align-self: center; }
 .hm-welcome h2 { color: var(--primary); margin-bottom: .15rem; }
-.hm-welcome h3 { font-size: 1rem; margin-bottom: .5rem; }
-.hm-welcome p { font-size: .88rem; margin-bottom: .6rem; }
-.hm-quick { border: 1px solid var(--border); border-radius: 18px; background: var(--surface); overflow: hidden; }
+.hm-welcome h3 { font-size: 1rem; margin-bottom: .45rem; }
+.hm-welcome p { font-size: .88rem; margin-bottom: .55rem; }
+.hm-welcome .sb { text-align: justify; text-justify: inter-word; hyphens: auto; -webkit-hyphens: auto; overflow-wrap: break-word; display: -webkit-box; -webkit-line-clamp: 7; -webkit-box-orient: vertical; overflow: hidden; }
+.sambutan-full { display: flex; gap: 1.2rem; align-items: flex-start; }
+.sambutan-full .kp { flex: none; width: 150px; aspect-ratio: 4 / 6; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 20px -10px rgba(0,0,0,.4); }
+.sambutan-full .kp img { width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block; }
+.sambutan-full > div:last-child { min-width: 0; }
+@media (max-width: 640px) { .hm-welcome, .sambutan-full { flex-direction: column; align-items: center; text-align: left; } .hm-welcome .pic, .sambutan-full .kp { width: 150px; } .hm-welcome .txt { align-self: stretch; } }
+.hm-quick { border: 1px solid var(--border); border-radius: 18px; background: var(--surface); overflow: hidden; display: flex; flex-direction: column; }
 .hm-quick > h3 { background: var(--primary); color: #fff; padding: .6rem 1rem; display: flex; align-items: center; gap: .5rem; font-size: 1rem; }
-.hm-quick .g { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; padding: .65rem; }
-.hm-q { display: flex; flex-direction: column; align-items: center; gap: .25rem; text-align: center; padding: .6rem .25rem; border-radius: 12px; background: var(--surface2); border: 1px solid transparent; color: var(--text); font: inherit; font-weight: 600; font-size: .76rem; line-height: 1.2; cursor: pointer; transition: transform .2s ease, background-color .2s, border-color .2s, box-shadow .2s; }
+.hm-quick .g { display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 1fr; gap: .5rem; padding: .65rem; flex: 1; }
+.hm-q { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .25rem; text-align: center; padding: .6rem .25rem; border-radius: 12px; background: var(--surface2); border: 1px solid transparent; color: var(--text); font: inherit; font-weight: 600; font-size: .76rem; line-height: 1.2; cursor: pointer; transition: transform .2s ease, background-color .2s, border-color .2s, box-shadow .2s; }
 .hm-q .material-symbols-outlined { font-size: 28px; color: var(--primary); }
 .hm-q:hover { transform: translateY(-3px); background: var(--sage); border-color: var(--primary); box-shadow: var(--shadow2); }
 /* kotak umum */

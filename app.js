@@ -370,8 +370,8 @@ PUB.beranda = () => {
   </section>
   ${statBar()}
   <section class="section"><div class="wrap hm-row">
-    <div class="hm-welcome" data-rv><div class="pic">${c.kepala_foto_id ? `<img alt="Kepala Madrasah" src="${img(c.kepala_foto_id, 700)}">` : ic('person')}</div>
-      <div class="txt"><h2>Sambutan Kepala Madrasah</h2><h3>Assalamu'alaikum Warahmatullahi Wabarakatuh</h3><p class="line4">${esc(sambutan)}</p>${c.kepala_nama ? `<p style="font-weight:700;margin-bottom:.5rem">${esc(c.kepala_nama)}</p>` : ''}<button class="btn btn-primary btn-sm btn-pill" onclick="go('profil')">Selengkapnya ${ic('arrow_forward')}</button></div></div>
+    <div class="hm-welcome" data-rv><div class="pic">${c.kepala_foto_id ? `<img alt="Kepala Madrasah" src="${img(c.kepala_foto_id, 500)}">` : ic('person')}</div>
+      <div class="txt"><h2>Sambutan Kepala Madrasah</h2><h3>Assalamu'alaikum Warahmatullahi Wabarakatuh</h3><p class="sb">${esc(sambutan.replace(/\s*\n+\s*/g, ' '))}</p>${c.kepala_nama ? `<p style="font-weight:700;margin-bottom:.5rem">${esc(c.kepala_nama)}</p>` : ''}<button class="btn btn-primary btn-sm btn-pill" onclick="showSambutan()">Selengkapnya ${ic('arrow_forward')}</button></div></div>
     <div class="hm-quick" data-rv style="--d:.08s"><h3>${ic('campaign')} Menu Cepat</h3><div class="g">${quick.map(q => `<button class="hm-q" onclick="go('${q[0]}')">${ic(q[1])}<span>${q[2]}</span></button>`).join('')}</div></div>
   </div></section>
   <section class="section"><div class="wrap hm-row2">
@@ -2017,3 +2017,9 @@ function drawLb() {
 }
 function lbMove(d) { const n = (S.galHome || []).length; if (!n) return; S.lb = (S.lb + d + n) % n; drawLb(); }
 function closeLb() { const lb = $('#lightbox'); if (lb) { lb.hidden = true; lb.innerHTML = ''; } document.body.classList.remove('noscroll'); }
+function showSambutan() {
+  const c = S.cfg, txt = c.sambutan || ('Selamat datang di website resmi ' + (c.nama_madrasah || '') + '. Semoga kehadiran website ini dapat menjadi jendela informasi dan media silaturahmi antara madrasah, siswa, orang tua, dan masyarakat.');
+  modal({ title: 'Sambutan Kepala Madrasah', wide: true,
+    body: `<div class="sambutan-full">${c.kepala_foto_id ? `<div class="kp"><img alt="Kepala Madrasah" src="${img(c.kepala_foto_id, 500)}"></div>` : ''}<div><h3 style="margin-bottom:.6rem">Assalamu'alaikum Warahmatullahi Wabarakatuh</h3><div class="prose">${para(txt)}</div>${c.kepala_nama ? `<p style="font-weight:700;margin-top:.4rem">${esc(c.kepala_nama)}</p>` : ''}</div></div>`,
+    foot: `<button class="btn btn-primary" onclick="closeModal()">Tutup</button>` });
+}
