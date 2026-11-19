@@ -94,11 +94,15 @@ async function api(action, p, quiet) {
   try {
     const r = await run('api', S.token, action, p || {});
     if (!r.success) {
-      if (r.code === 'AUTH') { if (quiet) { S.token = null; S.user = null; store.sset('sim_t', null); } else forceLogout(); } else if (!quiet) toast('Gagal', r.message, 'bad');
+      if (r.code === 'AUTH') { if (quiet) { S.token = null; S.user = null; store.sset('sim_t', null); } else forceLogout(); } else if (!quiet) { toast('Gagal', r.message, 'bad'); stuckFix(); }
       return;
     }
     return r.data == null ? true : r.data;
-  } catch (e) { if (!quiet) toast('Error', e.message, 'bad'); }
+  } catch (e) { if (!quiet) { toast('Error', e.message, 'bad'); stuckFix(); } }
+}
+function stuckFix() {
+  const sk = document.querySelector('#admMain .skeleton');
+  if (sk && sk.parentElement) sk.parentElement.innerHTML = `<div class="empty">${ic('cloud_off')}Gagal memuat data.<br><button class="btn btn-outline btn-sm" style="margin-top:.75rem" onclick="goA(S.adm)">Coba lagi</button></div>`;
 }
 function busy(btn, on, txt) {
   if (!btn) return;
@@ -198,12 +202,12 @@ async function startApp() {
     applyTheme();
     const cb = lsJ.get('sim_bundle');
     if (cb && cb.d && cb.d.cfg && cb.d.cfg.nama_madrasah && Date.now() - cb.t < 604800000) {
-      S.cfg = cb.d.cfg; S.berita = cb.d.berita; S.peng = cb.d.pengumuman; S.prestasi = cb.d.prestasi || []; S.agenda = cb.d.agenda || []; S.loadedAt = cb.t;
+      S.cfg = cb.d.cfg; S.berita = cb.d.berita; S.peng = cb.d.pengumuman; S.prestasi = cb.d.prestasi || []; S.agenda = cb.d.agenda || []; S.stat = cb.d.stat || {}; S.galHome = cb.d.galeri || []; S.loadedAt = cb.t;
       firstRender();
     } else {
       const r = await run('apiPublic', 'bundle', {});
       if (!r || !r.success) throw new Error((r && r.message) || 'Tidak ada respons dari server.');
-      S.cfg = r.data.cfg; S.berita = r.data.berita; S.peng = r.data.pengumuman; S.prestasi = r.data.prestasi || []; S.agenda = r.data.agenda || []; S.loadedAt = Date.now();
+      S.cfg = r.data.cfg; S.berita = r.data.berita; S.peng = r.data.pengumuman; S.prestasi = r.data.prestasi || []; S.agenda = r.data.agenda || []; S.stat = r.data.stat || {}; S.galHome = r.data.galeri || []; S.loadedAt = Date.now();
       lsJ.set('sim_bundle', { t: Date.now(), d: r.data });
       firstRender();
     }
@@ -231,13 +235,14 @@ function setBrand() {
   $$('[data-brand]').forEach(e => e.textContent = c.nama_madrasah || 'MA Suryah Khairuddin Merlung');
   $$('[data-logo]').forEach(e => { if (c.logo_id) { e.src = img(c.logo_id, 160); e.hidden = false; } else e.hidden = true; });
   $$('[data-logo-fb]').forEach(e => e.hidden = !!c.logo_id);
+  $$('[data-slogan]').forEach(e => e.textContent = c.slogan || '');
 }
 function updatePanelBtn() {
   const b = $('#btnPanel'); if (!b) return;
   b.innerHTML = S.user ? `${ic('dashboard')}<span class="hide-sm">Panel Saya</span>` : `${ic('login')}<span class="hide-sm">Masuk</span>`;
   b.onclick = () => S.user ? enterAdmin() : go('login');
 }
-function showPublic() { S.mode = 'public'; $('#adm').hidden = true; $('#pub').hidden = false; setBrand(); renderTop(); renderFoot(); updatePanelBtn(); }
+function showPublic() { S.mode = 'public'; $('#adm').hidden = true; $('#pub').hidden = false; setBrand(); renderTop(); renderFoot(); updatePanelBtn(); updateFab(); initChrome(); }
 
 const PUB = {};
 const PUB_PATH = { beranda: '', profil: 'profil', berita: 'berita', pengumuman: 'pengumuman', galeri: 'galeri', karya: 'karya', prestasi: 'prestasi', agenda: 'agenda', jadwal: 'jadwal', unduhan: 'unduhan', ppdb: 'ppdb', kontak: 'kontak', login: 'login' };
@@ -270,17 +275,48 @@ function route() {
 }
 window.addEventListener('hashchange', route);
 window.addEventListener('popstate', route);
+const hrefOf = k => '#/' + (typeof PUB_PATH !== 'undefined' ? (PUB_PATH[k] || '') : '');
+function navItems() {
+  const c = S.cfg, jad = c.jadwal_publik === 'Ya';
+  return [
+    { k: 'beranda', l: 'Beranda', ic: 'home' },
+    { k: 'profil', l: 'Profil', sub: [['profil', 'Profil Madrasah'], ['profil', 'Guru dan Tenaga Kependidikan', 'guruPub'], ['profil', 'Sarana dan Prasarana', 'blk-sarana-dan-prasarana']] },
+    { k: 'berita', l: 'Berita', extra: ['berita-detail'], sub: [['berita', 'Berita Terbaru'], ['pengumuman', 'Pengumuman']] },
+    { k: 'agenda', l: 'Akademik', extra: ['karya-detail'], sub: (jad ? [['jadwal', 'Jadwal Pelajaran']] : []).concat([['agenda', 'Agenda Kegiatan'], ['prestasi', 'Prestasi'], ['karya', 'Karya Siswa']]) },
+    { k: 'galeri', l: 'Galeri' }, { k: 'unduhan', l: 'Unduhan' }
+  ].concat(c.ppdb_aktif === 'Ya' ? [{ k: 'ppdb', l: 'PPDB' }] : []).concat([{ k: 'kontak', l: 'Kontak' }]);
+}
 function renderNav() {
-  const items = [['beranda', 'Beranda'], ['profil', 'Profil'], ['berita', 'Berita'], ['pengumuman', 'Pengumuman'], ['galeri', 'Galeri'], ['karya', 'Karya Siswa'], ['prestasi', 'Prestasi'], ['agenda', 'Agenda'], ['jadwal', 'Jadwal'], ['unduhan', 'Unduhan'], ['ppdb', 'PPDB'], ['kontak', 'Kontak']]
-    .filter(([k]) => (k !== 'ppdb' || S.cfg.ppdb_aktif === 'Ya') && (k !== 'jadwal' || S.cfg.jadwal_publik === 'Ya'));
-  const cur = S.page === 'berita-detail' ? 'berita' : S.page === 'karya-detail' ? 'karya' : S.page;
-  $('#pubNav').innerHTML = items.map(([k, l]) => `<a href="#/${PUB_PATH[k]}" class="nl ${cur === k ? 'active' : ''}" onclick="go('${k}');return false">${l}</a>`).join('');
+  const cur = S.page;
+  $('#pubNav').innerHTML = navItems().map(it => {
+    const pages = (it.sub ? it.sub.map(s => s[0]) : [it.k]).concat(it.extra || []), act = pages.indexOf(cur) >= 0;
+    if (!it.sub) return `<div class="nv ${act ? 'active' : ''}"><a class="nl" href="${hrefOf(it.k)}" onclick="go('${it.k}');return false">${it.ic ? ic(it.ic) : ''}${esc(it.l)}</a></div>`;
+    return `<div class="nv ${act ? 'active' : ''}"><a class="nl" href="${hrefOf(it.k)}" onclick="go('${it.k}');return false" aria-haspopup="true">${esc(it.l)}${ic('expand_more')}</a>
+      <div class="dd">${it.sub.map(s => `<a href="${hrefOf(s[0])}" onclick="goSub('${s[0]}','${s[2] || ''}');return false">${esc(s[1])}</a>`).join('')}</div></div>`;
+  }).join('');
+}
+function goSub(k, anchor) {
+  go(k);
+  if (anchor) [350, 1300].forEach(ms => setTimeout(() => { const e = document.getElementById(anchor); if (e && S.page === k) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, ms));
+}
+function socialIcons() {
+  const c = S.cfg;
+  return [['yt', 'YouTube', SVG.yt], ['ig', 'Instagram', SVG.ig], ['fb', 'Facebook', SVG.fb], ['tiktok', 'TikTok', SVG.tt]].map(([k, n, svg]) => {
+    const u = safeUrl(c[k]); return u ? `<a href="${esc(u)}" target="_blank" rel="noopener" aria-label="${n}" title="${n}">${svg}</a>` : '';
+  }).join('');
 }
 function renderTop() {
-  const c = S.cfg, p = [];
-  if (c.telp) p.push(`${ic('call')} ${esc(c.telp)}`); if (c.email) p.push(`${ic('mail')} ${esc(c.email)}`);
-  p.push(`${ic('location_on')} Merlung, Tanjung Jabung Barat`);
+  const c = S.cfg, p = [`${ic('location_on')} Merlung, Tanjung Jabung Barat`];
+  if (c.email) p.push(`${ic('mail')} ${esc(c.email)}`); if (c.telp) p.push(`${ic('call')} ${esc(c.telp)}`);
   $('#topInfo').innerHTML = p.map(x => `<span>${x}</span>`).join('');
+  $('#topSoc').innerHTML = socialIcons();
+}
+function updateFab() { const f = $('#waFloat'); if (!f) return; const w = waLink(S.cfg.wa); f.hidden = !w; if (w) f.href = w; }
+function initChrome() {
+  if (S.chrome) return; S.chrome = true;
+  const onS = () => { const y = window.scrollY, n = $('#navbar'), t = $('#toTop'); if (n) n.classList.toggle('scrolled', y > 12); if (t) t.hidden = S.mode !== 'public' || y < 500; };
+  window.addEventListener('scroll', onS, { passive: true }); onS();
+  document.addEventListener('keydown', e => { const lb = $('#lightbox'); if (!lb || lb.hidden) return; if (e.key === 'Escape') closeLb(); else if (e.key === 'ArrowRight') lbMove(1); else if (e.key === 'ArrowLeft') lbMove(-1); });
 }
 function socials(light) {
   const c = S.cfg, out = [];
@@ -292,13 +328,14 @@ function socials(light) {
   return out.join('');
 }
 function renderFoot() {
-  const c = S.cfg;
-  $('#pubFoot').innerHTML = `<div class="wrap section"><div class="grid g4">
-    <div><h4>${esc(c.nama_madrasah)}</h4><p style="font-size:.85rem">${esc(c.nama_yayasan)}<br>NPSN ${esc(c.npsn)} · NSM ${esc(c.nsm)}</p></div>
-    <div><h4>Tautan</h4><p style="font-size:.88rem;line-height:2"><a href="javascript:void(0)" onclick="go('profil')">Profil Madrasah</a><br><a href="javascript:void(0)" onclick="go('berita')">Berita</a><br><a href="javascript:void(0)" onclick="go('pengumuman')">Pengumuman</a><br><a href="javascript:void(0)" onclick="go('galeri')">Galeri</a><br><a href="javascript:void(0)" onclick="go('karya')">Karya Siswa</a><br><a href="javascript:void(0)" onclick="go('unduhan')">Unduhan</a><br><a href="javascript:void(0)" onclick="go('kontak')">Kontak</a></p></div>
-    <div><h4>Alamat</h4><p style="font-size:.85rem">${esc(c.alamat)}</p>${c.jam_layanan ? `<p style="font-size:.85rem">${esc(c.jam_layanan)}</p>` : ''}</div>
-    <div><h4>Terhubung</h4><div class="row">${socials(true) || '<span style="font-size:.85rem">Segera hadir</span>'}</div></div>
-  </div><p class="center" style="font-size:.78rem;margin-top:2rem;opacity:.8">© ${new Date().getFullYear()} ${esc(c.nama_madrasah)}. Hak cipta dilindungi.</p></div>`;
+  const c = S.cfg, wa = waLink(c.wa), L = (k, l) => `<li><a href="${hrefOf(k)}" onclick="go('${k}');return false">${l}</a></li>`;
+  $('#pubFoot').innerHTML = `<div class="wrap"><div class="ft">
+    <div class="fb">${c.logo_id ? `<img alt="" src="${img(c.logo_id, 160)}">` : ''}<div><h4>${esc(c.nama_madrasah)}</h4><p>${esc(c.slogan || '')}</p></div></div>
+    <div><h4>Kontak</h4><p>${ic('location_on')}${esc(c.alamat)}</p>${c.telp ? `<p>${ic('call')}${esc(c.telp)}</p>` : ''}${c.email ? `<p>${ic('mail')}${esc(c.email)}</p>` : ''}${c.jam_layanan ? `<p>${ic('schedule')}${esc(c.jam_layanan)}</p>` : ''}</div>
+    <div><h4>Menu Cepat</h4><ul>${L('beranda', 'Beranda')}${L('profil', 'Profil')}${L('berita', 'Berita')}${L('agenda', 'Agenda')}</ul></div>
+    <div><h4>Informasi</h4><ul>${c.ppdb_aktif === 'Ya' ? L('ppdb', 'PPDB') : ''}${L('kontak', 'Kontak')}${L('unduhan', 'Unduhan')}${L('galeri', 'Galeri')}</ul></div>
+    <div><h4>Ikut Kami</h4><div class="soc">${socialIcons()}${wa ? `<a href="${wa}" target="_blank" rel="noopener" aria-label="WhatsApp">${SVG.wa}</a>` : ''}${!socialIcons() && !wa ? '<span style="font-size:.8rem">Segera hadir</span>' : ''}</div></div>
+  </div></div><div class="ft-bar"><div class="wrap"><span>© ${new Date().getFullYear()} ${esc(c.nama_madrasah)}. Hak Cipta Dilindungi.</span>${c.moto ? `<i>${esc(c.moto)}</i>` : ''}</div></div>`;
 }
 const beritaCard = b => `<article class="card card-hover" style="overflow:hidden;cursor:pointer" tabindex="0" role="link" aria-label="${esc(b.judul)}"
   onclick="go('berita-detail','${esc(b.slug)}')" onkeydown="if(event.key==='Enter')go('berita-detail','${esc(b.slug)}')">
@@ -310,42 +347,56 @@ const anncCard = a => `<div class="card pad annc ${a.prioritas === 'Penting' ? '
   <h3 style="margin:.4rem 0">${esc(a.judul)}</h3><div class="muted prose" style="font-size:.88rem">${para(a.isi)}</div></div>`;
 
 PUB.beranda = () => {
-  const c = S.cfg;
-  const bg = c.hero_bg_id ? `style="background-image:linear-gradient(180deg,rgba(16,69,47,.78),rgba(16,69,47,.93)),url('${img(c.hero_bg_id, 1600)}')"` : '';
-  const stats = [1, 2, 3, 4].filter(i => c['stat_' + i + '_nilai'] && c['stat_' + i + '_label'])
-    .map(i => `<div class="stat"><b>${esc(c['stat_' + i + '_nilai'])}</b><span>${esc(c['stat_' + i + '_label'])}</span></div>`).join('');
+  const c = S.cfg, nama = c.nama_madrasah || 'MA Suryah Khairuddin Merlung';
+  const title = String(c.hero_title || nama).replace(/^\s*selamat datang di\s+/i, ''), slides = heroSlides();
+  const ag = agendaTerdekat().slice(0, 3), gal = S.galHome || [], peng = S.peng || [], pres = (S.prestasi || []).slice(0, 3);
+  const quick = [['ppdb', 'how_to_reg', 'PPDB Online', c.ppdb_aktif === 'Ya'], ['jadwal', 'calendar_month', 'Jadwal Pelajaran', c.jadwal_publik === 'Ya'], ['agenda', 'event', 'Agenda Kegiatan', true],
+    ['berita', 'newspaper', 'Berita Terbaru', true], ['galeri', 'photo_library', 'Galeri Foto', true], ['unduhan', 'download', 'Unduhan Dokumen', true], ['prestasi', 'emoji_events', 'Prestasi', true], ['profil', 'school', 'Profil Madrasah', true]]
+    .filter(x => x[3]).slice(0, 6);
+  const sambutan = c.sambutan || ('Selamat datang di website resmi ' + nama + '. Semoga kehadiran website ini dapat menjadi jendela informasi dan media silaturahmi antara madrasah, siswa, orang tua, dan masyarakat.');
+  let base = gal.slice(); while (base.length && base.length < 8) base = base.concat(gal);
+  const track = base.concat(base).map((g, k) => `<button class="hm-g" data-i="${k % base.length % gal.length}" onclick="openLb(${k % base.length % gal.length})" aria-label="Lihat foto ${esc(g.judul)}"><img alt="" loading="lazy" src="${img(g.file_id, 600)}"><span class="line2">${esc(g.judul)}</span></button>`).join('');
+  const beritaMini = b => `<article class="hm-n" tabindex="0" role="link" aria-label="${esc(b.judul)}" onclick="go('berita-detail','${esc(b.slug)}')" onkeydown="if(event.key==='Enter')go('berita-detail','${esc(b.slug)}')"><div class="im">${b.gambar_id ? `<img alt="" loading="lazy" src="${img(b.gambar_id, 600)}">` : ic('newspaper')}</div><div class="tt line2">${esc(b.judul)}</div></article>`;
+  const prestasiMini = x => `<article class="hm-n" tabindex="0" role="link" aria-label="${esc(x.judul)}" onclick="go('prestasi')" onkeydown="if(event.key==='Enter')go('prestasi')"><div class="im">${x.file_id ? `<img alt="" loading="lazy" src="${img(x.file_id, 600)}">` : ic('emoji_events')}</div><div class="tt line2">${esc(x.judul)}<small>${esc(x.peringkat || '')} · ${esc(x.nama)}</small></div></article>`;
+  const agItem = x => { const d = tglLokal(x.tgl_mulai), ok = !isNaN(d); return `<div class="hm-ag"><div class="hm-date"><b>${ok ? d.getDate() : ''}</b><small>${ok ? esc(d.toLocaleDateString('id-ID', { month: 'short' })) : ''} ${ok ? d.getFullYear() : ''}</small></div>
+    <div><h3 class="line2">${esc(x.judul)}</h3><div class="m">${x.waktu ? `<span>${ic('schedule')}${esc(x.waktu)}</span>` : ''}${x.lokasi ? `<span>${ic('location_on')}${esc(x.lokasi)}</span>` : ''}${!x.waktu && !x.lokasi ? `<span>${esc(tglRange(x.tgl_mulai, x.tgl_selesai))}</span>` : ''}</div></div></div>`; };
+  const anItem = a => `<div class="hm-an" role="link" tabindex="0" onclick="go('pengumuman')" onkeydown="if(event.key==='Enter')go('pengumuman')"><span class="badge ${a.prioritas === 'Penting' ? 'b-bad' : 'b-sage'}">${a.prioritas === 'Penting' ? 'Penting' : esc(a.kategori)}</span><b class="line2">${esc(a.judul)}</b><small>${esc(fmtD(a.tgl_terbit))}</small></div>`;
   $('#pubMain').innerHTML = `
-  <section class="hero" ${bg}><div class="wrap"><span class="pill">${esc(c.nama_yayasan)}</span>
-    <h1 style="max-width:18ch">${esc(c.hero_title)}</h1>${c.hero_sub ? `<p style="margin-top:1rem">${esc(c.hero_sub)}</p>` : ''}
-    <div class="row" style="margin-top:1.5rem">${c.ppdb_aktif === 'Ya' ? `<button class="btn btn-gold" onclick="go('ppdb')">${ic('how_to_reg')} Daftar Siswa Baru</button>` : ''}
-    <button class="btn btn-light" onclick="go('profil')">Lihat Profil Madrasah</button></div>${stats ? `<div class="stats">${stats}</div>` : ''}</div></section>
-  ${c.sambutan ? `<section class="section"><div class="wrap card pad"><div class="grid g2" style="align-items:center;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))">
-    <div class="arch">${c.kepala_foto_id ? `<img alt="Kepala Madrasah" src="${img(c.kepala_foto_id, 600)}">` : ''}</div>
-    <div><div class="eyebrow">Sambutan Kepala Madrasah</div><h2 style="margin-bottom:1rem">Assalamu'alaikum Warahmatullahi Wabarakatuh</h2>
-    <div class="prose line3" style="max-height:none">${para(c.sambutan.slice(0, 700))}</div>${c.kepala_nama ? `<p><b>${esc(c.kepala_nama)}</b><br><span class="muted" style="font-size:.85rem">Kepala ${esc(c.nama_madrasah)}</span></p>` : ''}</div></div></div></section>` : ''}
-  <section class="section ${c.sambutan ? 'alt' : ''}"><div class="wrap"><div class="sec-head"><div><div class="eyebrow">Kabar Madrasah</div><h2>Berita Terkini</h2></div>
-    <button class="btn btn-outline btn-sm" onclick="go('berita')">Semua Berita ${ic('arrow_forward')}</button></div>
-    ${S.berita.length ? `<div class="grid g3">${S.berita.slice(0, 3).map(beritaCard).join('')}</div>` : emptyBox('newspaper', 'Belum ada berita yang dipublikasikan.')}</div></section>
-  <section class="section"><div class="wrap"><div class="sec-head"><div><div class="eyebrow">Informasi Resmi</div><h2>Pengumuman</h2></div>
-    <button class="btn btn-outline btn-sm" onclick="go('pengumuman')">Semua Pengumuman</button></div>
-    ${S.peng.length ? `<div class="grid g2">${S.peng.slice(0, 4).map(anncCard).join('')}</div>` : emptyBox('campaign', 'Belum ada pengumuman aktif.')}</div></section>
-  ${agendaTerdekat().length ? `<section class="section alt"><div class="wrap"><div class="sec-head"><div><div class="eyebrow">Kalender Madrasah</div><h2>Agenda Mendatang</h2></div>
-    <button class="btn btn-outline btn-sm" onclick="go('agenda')">Semua Agenda</button></div><div class="grid g2">${agendaTerdekat().slice(0, 4).map(agendaCard).join('')}</div></div></section>` : ''}
-  ${(S.prestasi || []).length ? `<section class="section"><div class="wrap"><div class="sec-head"><div><div class="eyebrow">Membanggakan</div><h2>Prestasi</h2></div>
-    <button class="btn btn-outline btn-sm" onclick="go('prestasi')">Semua Prestasi</button></div><div class="grid g3">${S.prestasi.slice(0, 3).map(prestasiCard).join('')}</div></div></section>` : ''}
-  ${c.ppdb_aktif === 'Ya' ? `<section class="section"><div class="wrap"><div class="hero card pad" style="border-radius:20px;padding:2rem"><h2>Penerimaan Peserta Didik Baru telah dibuka</h2>
-    <p style="margin-top:.5rem">Dapatkan informasi persyaratan dan jadwal pendaftaran.</p><button class="btn btn-gold" onclick="go('ppdb')">Informasi PPDB</button></div></div></section>` : ''}`;
+  <section class="hm-hero" id="hmHero" aria-roledescription="carousel" aria-label="Sorotan madrasah">${slides.join('')}
+    <div class="wrap"><span class="hm-pill">${esc(c.hero_pill || 'Selamat Datang di')}</span><h1>${esc(title)}</h1>${c.hero_sub ? `<div class="hm-tag">${esc(c.hero_sub)}</div>` : '<div style="height:1rem"></div>'}
+      <div class="hm-cta"><button class="btn btn-primary" onclick="go('profil')">${ic('school')} Profil Madrasah</button>${c.ppdb_aktif === 'Ya' ? `<button class="btn btn-light" onclick="go('ppdb')">${ic('menu_book')} Daftar PPDB</button>` : `<button class="btn btn-light" onclick="go('berita')">${ic('newspaper')} Berita Terbaru</button>`}</div></div>
+    ${slides.length > 1 ? `<button class="hm-arrow hm-prev" aria-label="Gambar sebelumnya" onclick="hmGo(S.hm-1,true)">${ic('chevron_left')}</button><button class="hm-arrow hm-next" aria-label="Gambar berikutnya" onclick="hmGo(S.hm+1,true)">${ic('chevron_right')}</button>
+    <div class="hm-dots" role="tablist" aria-label="Pilih gambar">${slides.map((s, k) => `<button class="${k ? '' : 'on'}" role="tab" aria-label="Gambar ${k + 1}" onclick="hmGo(${k},true)"></button>`).join('')}</div>` : ''}
+  </section>
+  ${statBar()}
+  <section class="section"><div class="wrap hm-row">
+    <div class="hm-welcome" data-rv><div class="pic">${c.kepala_foto_id ? `<img alt="Kepala Madrasah" src="${img(c.kepala_foto_id, 700)}">` : ic('person')}</div>
+      <div class="txt"><h2>Sambutan Kepala Madrasah</h2><h3>Assalamu'alaikum Warahmatullahi Wabarakatuh</h3><p class="line4">${esc(sambutan)}</p>${c.kepala_nama ? `<p style="font-weight:700;margin-bottom:.5rem">${esc(c.kepala_nama)}</p>` : ''}<button class="btn btn-primary btn-sm btn-pill" onclick="go('profil')">Selengkapnya ${ic('arrow_forward')}</button></div></div>
+    <div class="hm-quick" data-rv style="--d:.08s"><h3>${ic('campaign')} Menu Cepat</h3><div class="g">${quick.map(q => `<button class="hm-q" onclick="go('${q[0]}')">${ic(q[1])}<span>${q[2]}</span></button>`).join('')}</div></div>
+  </div></section>
+  <section class="section"><div class="wrap hm-row2">
+    <div class="hm-box" data-rv><div class="hd"><h2>${ic('calendar_month')} Agenda Madrasah</h2><a onclick="go('agenda')">Lihat Semua →</a></div>${ag.length ? ag.map(agItem).join('') : emptyBox('event', 'Belum ada agenda mendatang.')}</div>
+    <div class="hm-box" data-rv style="--d:.08s"><div class="hd"><h2>${ic('newspaper')} Berita Terbaru</h2><a onclick="go('berita')">Lihat Semua →</a></div>${S.berita.length ? `<div class="hm-nw">${S.berita.slice(0, 3).map(beritaMini).join('')}</div>` : emptyBox('newspaper', 'Belum ada berita yang dipublikasikan.')}</div>
+  </div></section>
+  ${gal.length ? `<section class="section"><div class="wrap"><div class="hm-box" data-rv><div class="hd"><h2>${ic('photo_library')} Galeri Kegiatan</h2><a onclick="go('galeri')">Lihat Semua →</a></div>
+    <div class="hm-gal"><div class="hm-track" id="hmTrack" style="--dur:${Math.max(30, base.length * 5)}s">${track}</div></div></div></div></section>` : ''}
+  ${peng.length || pres.length ? `<section class="section"><div class="wrap hm-row2" style="grid-template-columns:${peng.length && pres.length ? '1fr 1.7fr' : '1fr'}">
+    ${peng.length ? `<div class="hm-box" data-rv><div class="hd"><h2>${ic('campaign')} Pengumuman</h2><a onclick="go('pengumuman')">Lihat Semua →</a></div>${peng.slice(0, 4).map(anItem).join('')}</div>` : ''}
+    ${pres.length ? `<div class="hm-box" data-rv style="--d:.08s"><div class="hd"><h2>${ic('emoji_events')} Prestasi</h2><a onclick="go('prestasi')">Lihat Semua →</a></div><div class="hm-nw">${pres.map(prestasiMini).join('')}</div></div>` : ''}
+  </div></section>` : ''}
+  ${c.ppdb_aktif === 'Ya' ? `<section class="section"><div class="wrap"><div class="hm-banner" data-rv><div><h2>Penerimaan Peserta Didik Baru telah dibuka</h2><p>Dapatkan informasi persyaratan dan jadwal pendaftaran.</p></div><button class="btn btn-gold btn-pill" onclick="go('ppdb')">Informasi PPDB ${ic('arrow_forward')}</button></div></div></section>` : ''}`;
+  initHome();
 };
 
 PUB.profil = () => {
   const c = S.cfg;
-  const blk = (t, body) => body ? `<section class="card pad" style="margin-bottom:1.25rem"><h2 style="margin-bottom:.75rem">${t}</h2><div class="prose">${body}</div></section>` : '';
+  const blk = (t, body) => body ? `<section class="card pad" id="blk-${t.toLowerCase().replace(/[^a-z0-9]+/g, '-')}" style="margin-bottom:1.25rem"><h2 style="margin-bottom:.75rem">${t}</h2><div class="prose">${body}</div></section>` : '';
   const misi = c.misi ? `<ol style="padding-left:1.2rem">${c.misi.split('\n').filter(x => x.trim()).map(x => `<li style="margin-bottom:.4rem">${esc(x)}</li>`).join('')}</ol>` : '';
   const any = c.sejarah || c.visi || c.misi || c.tujuan || c.struktur_img_id || c.sarpras;
   $('#pubMain').innerHTML = `<section class="hero" style="padding:2.5rem 0"><div class="wrap"><div class="eyebrow" style="color:#F6DE9C">Profil</div><h1>Profil Madrasah</h1></div></section>
   <section class="section"><div class="wrap" style="max-width:880px">
   ${blk('Sejarah', c.sejarah ? para(c.sejarah) : '')}${blk('Visi', c.visi ? para(c.visi) : '')}${blk('Misi', misi)}${blk('Tujuan Pendidikan', c.tujuan ? para(c.tujuan) : '')}${blk('Sarana dan Prasarana', c.sarpras ? para(c.sarpras) : '')}
-  ${c.struktur_img_id ? `<section class="card pad" style="margin-bottom:1.25rem"><h2 style="margin-bottom:.75rem">Struktur Organisasi</h2><img style="width:100%;border-radius:12px" alt="Bagan struktur organisasi" src="${img(c.struktur_img_id, 1400)}"></section>` : ''}
+  ${c.struktur_img_id ? `<section class="card pad" id="blk-struktur-organisasi" style="margin-bottom:1.25rem"><h2 style="margin-bottom:.75rem">Struktur Organisasi</h2><img style="width:100%;border-radius:12px" alt="Bagan struktur organisasi" src="${img(c.struktur_img_id, 1400)}"></section>` : ''}
   ${!any ? emptyBox('info', 'Konten profil belum diisi oleh admin.') : ''}
   <div id="guruPub"></div>
   <section class="card pad"><h2 style="margin-bottom:.75rem">Identitas Madrasah</h2><table class="tbl"><tbody>
@@ -478,7 +529,7 @@ async function refreshPublic() {
   let r = null;
   try { r = await run('apiPublic', 'bundle', {}); } catch (e) { return; }
   if (!r || !r.success) return;
-  S.cfg = r.data.cfg; S.berita = r.data.berita; S.peng = r.data.pengumuman; S.prestasi = r.data.prestasi || []; S.agenda = r.data.agenda || []; S.guruPub = null; S.jadwalPub = null; S.loadedAt = Date.now(); S.galeri = null; S.unduhan = null; S.karya = null; S.det = {};
+  S.cfg = r.data.cfg; S.berita = r.data.berita; S.peng = r.data.pengumuman; S.prestasi = r.data.prestasi || []; S.agenda = r.data.agenda || []; S.stat = r.data.stat || {}; S.galHome = r.data.galeri || []; S.guruPub = null; S.jadwalPub = null; S.loadedAt = Date.now(); S.galeri = null; S.unduhan = null; S.karya = null; S.det = {};
   lsJ.set('sim_bundle', { t: Date.now(), d: r.data });
   if (S.mode === 'public') { setBrand(); renderTop(); renderFoot(); renderNav(); if (PUB_REFRESH.includes(S.page)) PUB[S.page](); }
 }
@@ -491,6 +542,7 @@ function enterAdmin(wajib) {
   if (!S.mods || !S.mods.length) persistHydrate();
   S.mods = S.mods || []; renderMenu(); goA('dashboard'); if (wajib) pwModal(true);
   if (!S.mods.length || Date.now() - (S.modsAt || 0) > 60000) loadMods();
+  if (!S.refs) loadRefs();
   clearTimeout(S.pfT); S.pfT = setTimeout(idlePrefetch, 1500);
 }
 function prefetchSpec(k) {
@@ -772,7 +824,8 @@ async function cetakPdf(jenis, btn) {
 
 const SET_GROUPS = [
   { t: 'Identitas & Kop Surat', f: [['nama_yayasan', 'Nama Yayasan'], ['nama_madrasah', 'Nama Madrasah'], ['npsn', 'NPSN'], ['nsm', 'NSM'], ['alamat', 'Alamat lengkap', 'area'], ['logo_id', 'Logo madrasah (PNG)', 'img', 400]] },
-  { t: 'Beranda', f: [['hero_title', 'Judul utama'], ['hero_sub', 'Sub judul', 'area'], ['hero_bg_id', 'Gambar latar beranda', 'img', 1800],
+  { t: 'Beranda', f: [['hero_title', 'Judul utama'], ['hero_sub', 'Sub judul', 'area'], ['hero_bg_id', 'Gambar latar beranda ke-1', 'img', 1800], ['hero_bg2_id', 'Gambar latar beranda ke-2', 'img', 1800], ['hero_bg3_id', 'Gambar latar beranda ke-3', 'img', 1800], ['hero_bg4_id', 'Gambar latar beranda ke-4', 'img', 1800],
+    ['hero_pill', 'Teks kecil di atas judul (mis. Selamat Datang di)'], ['slogan', 'Slogan (di samping logo)'], ['moto', 'Moto (garis bawah halaman)'],
     ['stat_1_nilai', 'Statistik 1 — angka'], ['stat_1_label', 'Statistik 1 — label'], ['stat_2_nilai', 'Statistik 2 — angka'], ['stat_2_label', 'Statistik 2 — label'],
     ['stat_3_nilai', 'Statistik 3 — angka'], ['stat_3_label', 'Statistik 3 — label'], ['stat_4_nilai', 'Statistik 4 — angka'], ['stat_4_label', 'Statistik 4 — label']], hint: 'Isi statistik hanya jika datanya sudah terverifikasi; yang kosong tidak ditampilkan.' },
   { t: 'Sambutan Kepala Madrasah', f: [['kepala_nama', 'Nama Kepala Madrasah'], ['kepala_foto_id', 'Foto Kepala Madrasah', 'img', 900], ['sambutan', 'Teks sambutan', 'area']] },
@@ -1893,3 +1946,74 @@ async function loadGuruPub() {
     `<div style="text-align:center">${g.foto_id ? `<img alt="" loading="lazy" src="${img(g.foto_id, 300)}" style="width:96px;height:96px;object-fit:cover;border-radius:50%;margin:0 auto">` : `<div style="width:96px;height:96px;border-radius:50%;margin:0 auto;display:grid;place-items:center;background:var(--primary);color:#fff;font-weight:700;font-size:1.4rem">${esc(ini(g.nama))}</div>`}
     <p style="margin:.6rem 0 0;font-weight:600">${esc(g.nama)}</p><p class="muted" style="margin:0;font-size:.82rem">${esc(g.jabatan || g.mapel || '')}</p></div>`).join('')}</div></section>`;
 }
+
+const SVG = {
+  ig: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5zm0 2a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3H7zm5 3.5A4.5 4.5 0 1 1 7.5 12 4.5 4.5 0 0 1 12 7.5zm0 2a2.5 2.5 0 1 0 2.5 2.5A2.5 2.5 0 0 0 12 9.5zm5.2-3.7a1.1 1.1 0 1 1-1.1 1.1 1.1 1.1 0 0 1 1.1-1.1z"/></svg>',
+  fb: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 22v-8.2h2.8l.5-3.3h-3.3V8.4c0-.9.3-1.6 1.7-1.6H17V3.9c-.3 0-1.3-.1-2.4-.1-2.5 0-4.1 1.5-4.1 4.2v2.5H7.7v3.3h2.8V22h3z"/></svg>',
+  yt: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.6 7.2a2.5 2.5 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4A2.5 2.5 0 0 0 2.4 7.2C2 8.8 2 12 2 12s0 3.2.4 4.8a2.5 2.5 0 0 0 1.8 1.8C5.8 19 12 19 12 19s6.2 0 7.8-.4a2.5 2.5 0 0 0 1.8-1.8c.4-1.6.4-4.8.4-4.8s0-3.2-.4-4.8zM10 15V9l5.2 3z"/></svg>',
+  tt: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.6 3c.3 2.3 1.7 3.8 4 4v3.1c-1.5.1-2.8-.4-4-1.2v6.2c0 3.2-2.4 5.6-5.4 5.6s-5.4-2.4-5.4-5.4c0-3.3 2.8-5.8 6.1-5.4v3.2c-1.5-.4-2.9.7-2.9 2.2 0 1.3 1 2.3 2.3 2.3 1.4 0 2.4-1 2.4-2.6V3h2.9z"/></svg>',
+  wa: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.6.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3a.5.5 0 0 0 0-.5c-.1-.1-.6-1.4-.8-1.9s-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.3 5.3 0 0 0 1.1 2.8 12 12 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7a2.7 2.7 0 0 0 1.8-1.3 2.2 2.2 0 0 0 .2-1.3c-.1-.1-.3-.2-.6-.3z"/></svg>'
+};
+const nf = n => String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+function heroSlides() {
+  const c = S.cfg, ids = [c.hero_bg_id, c.hero_bg2_id, c.hero_bg3_id, c.hero_bg4_id].filter(Boolean);
+  return ids.length ? ids.map((id, k) => `<div class="hm-slide ${k ? '' : 'on'}" data-id="${esc(id)}" ${k ? '' : `style="background-image:url('${img(id, 1800)}')"`}></div>`)
+    : ['g1', 'g2', 'g3'].map((g, k) => `<div class="hm-slide ${g} ${k ? '' : 'on'}"></div>`);
+}
+function statBar() {
+  const c = S.cfg, st = S.stat || {}, auto = [[st.siswa, 'Jumlah Siswa', 'groups', 'linear-gradient(135deg,#2E9E67,#176B45)'], [st.guru, 'Jumlah Guru', 'co_present', 'linear-gradient(135deg,#3B82F6,#1D4ED8)'],
+    [st.prestasi, 'Prestasi', 'emoji_events', 'linear-gradient(135deg,#F2C14E,#C9A34A)'], [st.alumni, 'Alumni', 'school', 'linear-gradient(135deg,#A855F7,#6D28D9)']];
+  const items = [1, 2, 3, 4].map(i => {
+    const nv = c['stat_' + i + '_nilai'], lb = c['stat_' + i + '_label'], a = auto[i - 1];
+    if (nv && lb) return { v: String(nv), l: lb, ic: a[2], bg: a[3] };
+    return Number(a[0]) > 0 ? { v: String(a[0]), l: a[1], ic: a[2], bg: a[3] } : null;
+  }).filter(Boolean);
+  if (!items.length) return '';
+  return `<div class="hm-stats"><div class="wrap"><div class="box" data-rv>${items.map(x => {
+    const m = x.v.match(/^([\d.,]+)(.*)$/), to = m ? Number(m[1].replace(/[.,]/g, '')) : 0;
+    return `<div class="hm-stat"><div class="hm-ic" style="background:${x.bg}">${ic(x.ic)}</div><div><b ${m ? `data-to="${to}" data-suf="${esc(m[2])}"` : ''}>${m ? nf(to) + esc(m[2]) : esc(x.v)}</b><span>${esc(x.l)}</span></div></div>`;
+  }).join('')}</div></div></div>`;
+}
+function hmGo(i, manual) {
+  const h = $('#hmHero'); if (!h) return;
+  const sl = h.querySelectorAll('.hm-slide'), dots = h.querySelectorAll('.hm-dots button'), n = sl.length; if (n < 2) return;
+  S.hm = (i + n) % n;
+  sl.forEach((s, k) => { if (s.dataset.id && !s.style.backgroundImage) s.style.backgroundImage = `url('${img(s.dataset.id, 1800)}')`; s.classList.toggle('on', k === S.hm); });
+  dots.forEach((d, k) => d.classList.toggle('on', k === S.hm));
+  if (manual) { clearInterval(S.hmT); S.hmT = setInterval(hmTick, 6000); }
+}
+function hmTick() { if (!$('#hmHero')) { clearInterval(S.hmT); return; } if (!S.hmPause && !document.hidden) hmGo(S.hm + 1); }
+function countUp(b) {
+  const to = Number(b.dataset.to), suf = b.dataset.suf || '', t0 = performance.now(), dur = 1300;
+  const step = t => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); b.textContent = nf(to * e) + suf; if (k < 1) requestAnimationFrame(step); else b.textContent = nf(to) + suf; };
+  requestAnimationFrame(step);
+}
+function initHome() {
+  clearInterval(S.hmT); S.hm = 0; S.hmPause = false;
+  const h = $('#hmHero'), reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (h) {
+    setTimeout(() => h.querySelectorAll('.hm-slide').forEach(s => { if (s.dataset.id && !s.style.backgroundImage) s.style.backgroundImage = `url('${img(s.dataset.id, 1800)}')`; }), 900);
+    if (!reduce) S.hmT = setInterval(hmTick, 6000);
+    h.addEventListener('mouseenter', () => { S.hmPause = true; }); h.addEventListener('mouseleave', () => { S.hmPause = false; });
+    h.addEventListener('focusin', () => { S.hmPause = true; }); h.addEventListener('focusout', () => { S.hmPause = false; });
+    let x0 = null;
+    h.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
+    h.addEventListener('touchend', e => { if (x0 === null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(dx) > 45) hmGo(S.hm + (dx < 0 ? 1 : -1), true); }, { passive: true });
+  }
+  const rv = document.querySelectorAll('#pubMain [data-rv]'), nums = document.querySelectorAll('#pubMain .hm-stat b[data-to]');
+  if (!('IntersectionObserver' in window) || reduce) { rv.forEach(e => e.classList.add('in')); return; }
+  nums.forEach(b => { b.textContent = '0' + (b.dataset.suf || ''); });
+  const io = new IntersectionObserver(es => es.forEach(en => {
+    if (!en.isIntersecting) return; io.unobserve(en.target); en.target.classList.add('in');
+    en.target.querySelectorAll('.hm-stat b[data-to]').forEach(countUp);
+  }), { threshold: 0.12 });
+  rv.forEach(e => io.observe(e));
+}
+function openLb(i) { S.lb = i; drawLb(); const lb = $('#lightbox'); lb.hidden = false; document.body.classList.add('noscroll'); const x = lb.querySelector('.x'); if (x) x.focus(); }
+function drawLb() {
+  const g = (S.galHome || [])[S.lb]; if (!g) return;
+  $('#lightbox').innerHTML = `<img alt="${esc(g.judul)}" src="${img(g.file_id, 1400)}"><div class="cap">${esc(g.judul)}</div>
+    <button class="x" aria-label="Tutup" onclick="closeLb()">${ic('close')}</button>${S.galHome.length > 1 ? `<button class="pv" aria-label="Sebelumnya" onclick="lbMove(-1)">${ic('chevron_left')}</button><button class="nx" aria-label="Berikutnya" onclick="lbMove(1)">${ic('chevron_right')}</button>` : ''}`;
+}
+function lbMove(d) { const n = (S.galHome || []).length; if (!n) return; S.lb = (S.lb + d + n) % n; drawLb(); }
+function closeLb() { const lb = $('#lightbox'); if (lb) { lb.hidden = true; lb.innerHTML = ''; } document.body.classList.remove('noscroll'); }
